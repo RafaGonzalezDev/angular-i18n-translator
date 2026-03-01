@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="en" target-language="es" original="messages">
+    <body>
+      <!-- ==================== NAVIGATION ==================== -->
+      <trans-unit id="nav.home">
+        <source>Home</source>
+        <target>Home</target>
+        <note>Main navigation link to home page</note>
+      </trans-unit>
+      <trans-unit id="nav.about">
+        <source>About</source>
+        <target>About</target>
+        <note>Navigation link to about page</note>
+      </trans-unit>
+      <trans-unit id="nav.contact">
+        <source>Contact</source>
+        <target>Contact</target>
+        <note>Navigation link to contact page</note>
+      </trans-unit>
+      <trans-unit id="nav.settings">
+        <source>Settings</source>
+        <target>Settings</target>
+        <note>Navigation link to settings page</note>
+      </trans-unit>
+      <trans-unit id="nav.profile">
+        <source>Profile</source>
+        <target>Profile</target>
+        <note>Navigation link to user profile</note>
+      </trans-unit>
+      <trans-unit id="nav.login">
+        <source>Login</source>
+        <target>Login</target>
+        <note>Navigation link to login page</note>
+      </trans-unit>
+      <trans-unit id="nav.logout">
+        <source>Logout</source>
+        <target>Logout</target>
+        <note>Navigation link to logout action</note>
+      </trans-unit>
+      <trans-unit id="nav.register">
+        <source>Register</source>
+        <target>Register</target>
+        <note>Navigation link to registration page</note>
+      </trans-unit>
+
+      <!-- ==================== COMMON ACTIONS ==================== -->
+      <trans-unit id="action.save">
+        <source>Save</source>
+        <target>Save</target>
+        <note>Generic save action button</note>
+      </trans-unit>
+      <trans-unit id="action.cancel">
+        <source>Cancel</source>
+        <target>Cancel</target>
+        <note>Generic cancel action button</note>
+      </trans-unit>
+      <trans-unit id="action.delete">
+        <source>Delete</source>
+        <target>Delete</target>
+        <note>Generic delete action button</note>
+      </trans-unit>
+      <trans-unit id="action.edit">
+        <source>Edit</source>
+        <target>Edit</target>
+        <note>Generic edit action button</note>
+      </trans-unit>
+      <trans-unit id="action.add">
+        <source>Add</source>
+        <target>Add</target>
+        <note>Generic add action button</note>
+      </trans-unit>
+      <trans-unit id="action.search">
+        <source>Search</source>
+        <target>Search</target>
+        <note>Search button or placeholder</note>
+      </trans-unit>
+      <trans-unit id="action.filter">
+        <source>Filter</source>
+        <target>Filter</target>
+        <note>Filter action button</note>
+      </trans-unit>
+      <trans-unit id="action.submit">
+        <source>Submit</source>
+        <target>Submit</target>
+        <note>Form submit button</note>
+      </trans-unit>
+      <trans-unit id="action.reset">
+        <source>Reset</source>
+        <target>Reset</target>
+        <note>Form reset button</note>
+      </trans-unit>
+      <trans-unit id="action.back">
+        <source>Back</source>
+        <target>Back</target>
+        <note>Navigation back button</note>
+      </trans-unit>
+      <trans-unit id="action.next">
+        <source>Next</source>
+        <target>Next</target>
+        <note>Navigation next button</note>
+      </trans-unit>
+      <trans-unit id="action.continue">
+        <source>Continue</source>
+        <target>Continue</target>
+        <note>Continue action button</note>
+      </trans-unit>
+
+      <!-- ==================== FORM FIELDS ==================== -->
+      <trans-unit id="form.name">
+        <source>Name</source>
+        <target>Name</target>
+        <note>Generic name field label</note>
+      </trans-unit>
+      <trans-unit id="form.email">
+        <source>Email</source>
+        <target>Email</target>
+        <note>Email field label</note>
+      </trans-unit>
+      <trans-unit id="form.password">
+        <source>Password</source>
+        <target>Password</target>
+        <note>Password field label</note>
+      </trans-unit>
+      <trans-unit id="form.confirmPassword">
+        <source>Confirm Password</source>
+        <target>Confirm Password</target>
+        <note>Password confirmation field label</note>
+      </trans-unit>
+      <trans-unit id="form.phone">
+        <source>Phone</source>
+        <target>Phone</target>
+        <note>Phone number field label</note>
+      </trans-unit>
+      <trans-unit id="form.address">
+        <source>Address</source>
+        <target>Address</target>
+        <note>Address field label</note>
+      </trans-unit>
+      <trans-unit id="form.city">
+        <source>City</source>
+        <target>City</target>
+        <note>City field label</note>
+      </trans-unit>
+      <trans-unit id="form.country">
+        <source>Country</source>
+        <target>Country</target>
+        <note>Country field label</note>
+      </trans-unit>
+      <trans-unit id="form.zipCode">
+        <source>Zip Code</source>
+        <target>Zip Code</target>
+        <note>Zip code field label</note>
+      </trans-unit>
+
+      <!-- ==================== MESSAGES ==================== -->
+      <trans-unit id="msg.welcome">
+        <source>Welcome</source>
+        <target>Welcome</target>
+        <note>Welcome greeting message</note>
+      </trans-unit>
+      <trans-unit id="msg.goodbye">
+        <source>Goodbye</source>
+        <target>Goodbye</target>
+        <note>Farewell message</note>
+      </trans-unit>
+      <trans-unit id="msg.thankYou">
+        <source>Thank you</source>
+        <target>Thank you</target>
+        <note>Thank you message</note>
+      </trans-unit>
+      <trans-unit id="msg.loading">
+        <source>Loading...</source>
+        <target>Loading...</target>
+        <note>Loading indicator text</note>
+      </trans-unit>
+      <trans-unit id="msg.error">
+        <source>Error</source>
+        <target>Error</target>
+        <note>Generic error message</note>
+      </trans-unit>
+      <trans-unit id="msg.success">
+        <source>Success</source>
+        <target>Success</target>
+        <note>Success message</note>
+      </trans-unit>
+      <trans-unit id="msg.warning">
+        <source>Warning</source>
+        <target>Warning</target>
+        <note>Warning message</note>
+      </trans-unit>
+      <trans-unit id="msg.info">
+        <source>Information</source>
+        <target>Information</target>
+        <note>Information message</note>
+      </trans-unit>
+
+      <!-- ==================== USER CONTENT ==================== -->
+      <trans-unit id="user.profile">
+        <source>My Profile</source>
+        <target>My Profile</target>
+        <note>User profile section</note>
+      </trans-unit>
+      <trans-unit id="user.account">
+        <source>My Account</source>
+        <target>My Account</target>
+        <note>User account section</note>
+      </trans-unit>
+      <trans-unit id="user.orders">
+        <source>My Orders</source>
+        <target>My Orders</target>
+        <note>User orders section</note>
+      </trans-unit>
+      <trans-unit id="user.favorites">
+        <source>My Favorites</source>
+        <target>My Favorites</target>
+        <note>User favorites section</note>
+      </trans-unit>
+      <trans-unit id="user.settings">
+        <source>Settings</source>
+        <target>Settings</target>
+        <note>User settings section</note>
+      </trans-unit>
+      <trans-unit id="user.help">
+        <source>Help</source>
+        <target>Help</target>
+        <note>Help section</note>
+      </trans-unit>
+      <trans-unit id="user.support">
+        <source>Support</source>
+        <target>Support</target>
+        <note>Support section</note>
+      </trans-unit>
+
+      <!-- ==================== E-COMMERCE ==================== -->
+      <trans-unit id="ecom.product">
+        <source>Product</source>
+        <target>Product</target>
+        <note>E-commerce product label</note>
+      </trans-unit>
+      <trans-unit id="ecom.price">
+        <source>Price</source>
+        <target>Price</target>
+        <note>Price label</note>
+      </trans-unit>
+      <trans-unit id="ecom.quantity">
+        <source>Quantity</source>
+        <target>Quantity</target>
+        <note>Quantity label</note>
+      </trans-unit>
+      <trans-unit id="ecom.cart">
+        <source>Cart</source>
+        <target>Cart</target>
+        <note>Shopping cart</note>
+      </trans-unit>
+      <trans-unit id="ecom.checkout">
+        <source>Checkout</source>
+        <target>Checkout</target>
+        <note>Checkout button</note>
+      </trans-unit>
+      <trans-unit id="ecom.order">
+        <source>Order</source>
+        <target>Order</target>
+        <note>Order label</note>
+      </trans-unit>
+      <trans-unit id="ecom.payment">
+        <source>Payment</source>
+        <target>Payment</target>
+        <note>Payment label</note>
+      </trans-unit>
+      <trans-unit id="ecom.shipping">
+        <source>Shipping</source>
+        <target>Shipping</target>
+        <note>Shipping label</note>
+      </trans-unit>
+      <trans-unit id="ecom.delivery">
+        <source>Delivery</source>
+        <target>Delivery</target>
+        <note>Delivery label</note>
+      </trans-unit>
+
+      <!-- ==================== DASHBOARD ==================== -->
+      <trans-unit id="dash.overview">
+        <source>Overview</source>
+        <target>Overview</target>
+        <note>Dashboard overview section</note>
+      </trans-unit>
+      <trans-unit id="dash.statistics">
+        <source>Statistics</source>
+        <target>Statistics</target>
+        <note>Dashboard statistics</note>
+      </trans-unit>
+      <trans-unit id="dash.reports">
+        <source>Reports</source>
+        <target>Reports</target>
+        <note>Dashboard reports</note>
+      </trans-unit>
+      <trans-unit id="dash.analytics">
+        <source>Analytics</source>
+        <target>Analytics</target>
+        <note>Dashboard analytics</note>
+      </trans-unit>
+      <trans-unit id="dash.trends">
+        <source>Trends</source>
+        <target>Trends</target>
+        <note>Dashboard trends</note>
+      </trans-unit>
+
+      <!-- ==================== SETTINGS ==================== -->
+      <trans-unit id="settings.language">
+        <source>Language</source>
+        <target>Language</target>
+        <note>Language setting</note>
+      </trans-unit>
+      <trans-unit id="settings.theme">
+        <source>Theme</source>
+        <target>Theme</target>
+        <note>Theme setting</note>
+      </trans-unit>
+      <trans-unit id="settings.notifications">
+        <source>Notifications</source>
+        <target>Notifications</target>
+        <note>Notifications setting</note>
+      </trans-unit>
+      <trans-unit id="settings.privacy">
+        <source>Privacy</source>
+        <target>Privacy</target>
+        <note>Privacy setting</note>
+      </trans-unit>
+      <trans-unit id="settings.security">
+        <source>Security</source>
+        <target>Security</target>
+        <note>Security setting</note>
+      </trans-unit>
+
+      <!-- ==================== ERROR MESSAGES ==================== -->
+      <trans-unit id="error.notFound">
+        <source>Not Found</source>
+        <target>Not Found</target>
+        <note>404 error message</note>
+      </trans-unit>
+      <trans-unit id="error.unauthorized">
+        <source>Unauthorized</source>
+        <target>Unauthorized</target>
+        <note>401 error message</note>
+      </trans-unit>
+      <trans-unit id="error.serverError">
+        <source>Server Error</source>
+        <target>Server Error</target>
+        <note>500 error message</note>
+      </trans-unit>
+      <trans-unit id="error.networkError">
+        <source>Network Error</source>
+        <target>Network Error</target>
+        <note>Network connectivity error</note>
+      </trans-unit>
+      <trans-unit id="error.timeout">
+        <source>Request Timeout</source>
+        <target>Request Timeout</target>
+        <note>Request timeout error</note>
+      </trans-unit>
+
+      <!-- ==================== CONFIRMATION DIALOGS ==================== -->
+      <trans-unit id="confirm.areYouSure">
+        <source>Are you sure?</source>
+        <target>Are you sure?</target>
+        <note>Generic confirmation question</note>
+      </trans-unit>
+      <trans-unit id="confirm.action">
+        <source>Confirm Action</source>
+        <target>Confirm Action</target>
+        <note>Confirmation dialog title</note>
+      </trans-unit>
+      <trans-unit id="confirm.undoWarning">
+        <source>This action cannot be undone</source>
+        <target>This action cannot be undone</target>
+        <note>Undo warning message</note>
+      </trans-unit>
+
+      <!-- ==================== DATE/TIME ==================== -->
+      <trans-unit id="date.today">
+        <source>Today</source>
+        <target>Today</target>
+        <note>Today's date</note>
+      </trans-unit>
+      <trans-unit id="date.yesterday">
+        <source>Yesterday</source>
+        <target>Yesterday</target>
+        <note>Yesterday's date</note>
+      </trans-unit>
+      <trans-unit id="date.tomorrow">
+        <source>Tomorrow</source>
+        <target>Tomorrow</target>
+        <note>Tomorrow's date</note>
+      </trans-unit>
+      <trans-unit id="date.now">
+        <source>Now</source>
+        <target>Now</target>
+        <note>Current time</note>
+      </trans-unit>
+      <trans-unit id="date.later">
+        <source>Later</source>
+        <target>Later</target>
+        <note>Later time reference</note>
+      </trans-unit>
+      <trans-unit id="date.soon">
+        <source>Soon</source>
+        <target>Soon</target>
+        <note>Soon time reference</note>
+      </trans-unit>
+
+      <!-- ==================== STATUS ==================== -->
+      <trans-unit id="status.active">
+        <source>Active</source>
+        <target>Active</target>
+        <note>Active status</note>
+      </trans-unit>
+      <trans-unit id="status.inactive">
+        <source>Inactive</source>
+        <target>Inactive</target>
+        <note>Inactive status</note>
+      </trans-unit>
+      <trans-unit id="status.pending">
+        <source>Pending</source>
+        <target>Pending</target>
+        <note>Pending status</note>
+      </trans-unit>
+      <trans-unit id="status.approved">
+        <source>Approved</source>
+        <target>Approved</target>
+        <note>Approved status</note>
+      </trans-unit>
+      <trans-unit id="status.rejected">
+        <source>Rejected</source>
+        <target>Rejected</target>
+        <note>Rejected status</note>
+      </trans-unit>
+      <trans-unit id="status.completed">
+        <source>Completed</source>
+        <target>Completed</target>
+        <note>Completed status</note>
+      </trans-unit>
+      <trans-unit id="status.cancelled">
+        <source>Cancelled</source>
+        <target>Cancelled</target>
+        <note>Cancelled status</note>
+      </trans-unit>
+
+      <!-- ==================== INTERPOLATION EXAMPLES ==================== -->
+      <trans-unit id="interp.greeting">
+        <source>Hello, {{name}}!</source>
+        <target>Hello, {{name}}!</target>
+        <note>Interpolation with user name variable</note>
+      </trans-unit>
+      <trans-unit id="interp.itemCount">
+        <source>You have {{count}} items</source>
+        <target>You have {{count}} items</target>
+        <note>Interpolation with count variable</note>
+      </trans-unit>
+      <trans-unit id="interp.priceDisplay">
+        <source>Total: {{currency}}{{amount}}</source>
+        <target>Total: {{currency}}{{amount}}</target>
+        <note>Interpolation with currency and amount</note>
+      </trans-unit>
+      <trans-unit id="interp.dateDisplay">
+        <source>Created on {{date}}</source>
+        <target>Created on {{date}}</target>
+        <note>Interpolation with date variable</note>
+      </trans-unit>
+      <trans-unit id="interp.timeDisplay">
+        <source>Last updated: {{time}}</source>
+        <target>Last updated: {{time}}</target>
+        <note>Interpolation with time variable</note>
+      </trans-unit>
+
+      <!-- ==================== ICU FORMAT EXAMPLES ==================== -->
+      <trans-unit id="icu.itemsRemaining">
+        <source>{count, plural, =0 {No items} =1 {One item} other {# items}}</source>
+        <target>{count, plural, =0 {No items} =1 {One item} other {# items}}</target>
+        <note>ICU plural format for items count</note>
+      </trans-unit>
+      <trans-unit id="icu.notificationCount">
+        <source>{count, plural, =0 {No notifications} =1 {1 notification} other {# notifications}}</source>
+        <target>{count, plural, =0 {No notifications} =1 {1 notification} other {# notifications}}</target>
+        <note>ICU plural format for notifications</note>
+      </trans-unit>
+      <trans-unit id="icu.genderSelect">
+        <source>{gender, select, male {He} female {She} other {They}} arrived</source>
+        <target>{gender, select, male {He} female {She} other {They}} arrived</target>
+        <note>ICU select format for gender</note>
+      </trans-unit>
+      <trans-unit id="icu.orderStatus">
+        <source>{status, select, pending {Your order is pending} processing {Your order is being processed} shipped {Your order has shipped} delivered {Your order has been delivered} other {Unknown status}}</source>
+        <target>{status, select, pending {Your order is pending} processing {Your order is being processed} shipped {Your order has shipped} delivered {Your order has been delivered} other {Unknown status}}</target>
+        <note>ICU select format for order status</note>
+      </trans-unit>
+
+      <!-- ==================== PLACEHOLDER EXAMPLES ==================== -->
+      <trans-unit id="placeholder.search">
+        <source>Search...</source>
+        <target>Search...</target>
+        <note>Search input placeholder</note>
+      </trans-unit>
+      <trans-unit id="placeholder.email">
+        <source>Enter your email</source>
+        <target>Enter your email</target>
+        <note>Email input placeholder</note>
+      </trans-unit>
+      <trans-unit id="placeholder.password">
+        <source>Enter your password</source>
+        <target>Enter your password</target>
+        <note>Password input placeholder</note>
+      </trans-unit>
+      <trans-unit id="placeholder.name">
+        <source>Enter your name</source>
+        <target>Enter your name</target>
+        <note>Name input placeholder</note>
+      </trans-unit>
+      <trans-unit id="placeholder.phone">
+        <source>Enter phone number</source>
+        <target>Enter phone number</target>
+        <note>Phone input placeholder</note>
+      </trans-unit>
+      <trans-unit id="placeholder.address">
+        <source>Enter address</source>
+        <target>Enter address</target>
+        <note>Address input placeholder</note>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

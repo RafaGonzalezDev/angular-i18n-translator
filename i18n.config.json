@@ -1,0 +1,20 @@
+{
+  "languages": [
+    { "code": "en", "name": "English", "file": "messages.en.xlf" },
+    { "code": "es", "name": "Spanish", "file": "messages.es.xlf" },
+    { "code": "fr", "name": "French", "file": "messages.fr.xlf" }
+  ],
+  "sourceLanguage": "en",
+  "sourceFile": "messages.xlf",
+  "csvOutput": "messages.csv",
+  "outputDir": "dist-i18n",
+  "batchDir": "batches",
+  "llm": {
+    "baseURL": "https://api.deepseek.com/v1",
+    "apiKey": "${LLM_API_KEY}",
+    "model": "deepseek-chat",
+    "batchSize": 50,
+    "concurrency": 5,
+    "systemPrompt": "You are a professional translator specializing in software localization. Translate the following CSV content from English to the target language specified. Important rules:\n1. Preserve all interpolations like {{variable}} exactly as they are\n2. Preserve all ICU message format like {count, plural, =0 {...} other {...}}\n3. Preserve all placeholders like <x id=\"...\"/>\n4. Do NOT translate the translation unit IDs\n5. Return ONLY the CSV content, no additional text or explanations\n6. Keep the same CSV format with columns: id,source,note,meaning,target_language"
+  }
+}
