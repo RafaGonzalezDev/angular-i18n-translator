@@ -1,28 +1,28 @@
 # Angular i18n Translator
 
-Herramienta CLI de Node.js para gestionar el flujo de trabajo de traducciones i18n en proyectos Angular mediante LLM (Large Language Models).
+Node.js CLI tool for managing i18n translation workflow in Angular projects using LLM (Large Language Models).
 
-## Tabla de Contenidos
+## Table of Contents
 
-- [Descripcion](#descripcion)
-- [Caracteristicas](#caracteristicas)
-- [Requisitos Previos](#requisitos-previos)
-- [Instalacion](#instalacion)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Configuracion](#configuracion)
-- [Comandos](#comandos)
-- [Flujo de Trabajo](#flujo-de-trabajo)
-- [Proveedores LLM Soportados](#proveedores-llm-soportados)
-- [Seguridad](#seguridad)
-- [Solucion de Problemas](#solucion-de-problemas)
+- [Description](#description)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Commands](#commands)
+- [Workflow](#workflow)
+- [Supported LLM Providers](#supported-llm-providers)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## Descripcion
+## Description
 
-**Angular i18n Translator** es una herramienta de linea de comandos que automatiza el proceso de traduccion de archivos XLF (XLIFF) utilizados en el sistema de internacionalizacion de Angular. Utiliza modelos de lenguaje (LLM) compatibles con la API de OpenAI para realizar traducciones de alta calidad, respetando interpolaciones, placeholders y formatos ICU.
+**Angular i18n Translator** is a command-line tool that automates the translation process of XLF (XLIFF) files used in Angular's internationalization system. It uses OpenAI-compatible LLM language models to perform high-quality translations while respecting interpolations, placeholders, and ICU formats.
 
-### Flujo de trabajo
+### Workflow
 
 ```
 messages.xlf --> messages.csv --> batches/*.csv --> LLM Translation --> batches/translated/*.csv --> messages.translated.csv --> dist-i18n/*.xlf
@@ -30,90 +30,90 @@ messages.xlf --> messages.csv --> batches/*.csv --> LLM Translation --> batches/
 
 ---
 
-## Caracteristicas
+## Features
 
-- **Conversion XLF a CSV**: Transforma archivos XLF de Angular a formato CSV para facilitar la edicion y traduccion
-- **Traduccion con LLM**: Integracion con multiples proveedores de LLM (DeepSeek, OpenAI, Azure, Ollama, etc.)
-- **Procesamiento por lotes**: Divide traducciones grandes en batches configurables para optimizar el uso de la API
-- **Procesamiento secuencial de idiomas**: Los idiomas se procesan **secuencialmente** (uno a la vez) para evitar conflictos de archivos entre lotes traducidos
-- **Procesamiento paralelo de batches**: Dentro de cada idioma, los batches se procesan en paralelo segun el parametro `concurrency`
-- **Validacion completa**: Verifica interpolaciones, IDs duplicados y cobertura de traduccion
-- **Reintentos automaticos**: Sistema de backoff exponencial para manejar errores de red y rate limiting
-- **Preservacion de estructura**: Mantiene interpolaciones `{{variable}}`, placeholders `<x id="..."/>` y formatos ICU intactos
-
----
-
-## Requisitos Previos
-
-- **Node.js** >= 18.0.0 (requiere `fetch` nativo)
-- **Clave API** de un proveedor LLM compatible (DeepSeek, OpenAI, Azure OpenAI, etc.)
-- **Angular CLI** (para extraer las cadenas i18n con `ng extract-i18n`)
+- **XLF to CSV Conversion**: Transforms Angular XLF files to CSV format for easier editing and translation
+- **LLM Translation**: Integration with multiple LLM providers (DeepSeek, OpenAI, Azure, Ollama, etc.)
+- **Batch Processing**: Splits large translations into configurable batches to optimize API usage
+- **Sequential Language Processing**: Languages are processed **sequentially** (one at a time) to avoid file conflicts between translated batches
+- **Parallel Batch Processing**: Within each language, batches are processed in parallel according to the `concurrency` parameter
+- **Complete Validation**: Verifies interpolations, duplicate IDs, and translation coverage
+- **Automatic Retries**: Exponential backoff system to handle network errors and rate limiting
+- **Structure Preservation**: Keeps interpolations `{{variable}}`, placeholders `<x id="..."/>` and ICU formats intact
 
 ---
 
-## Instalacion
+## Prerequisites
 
-### 1. Clonar o descargar el proyecto
+- **Node.js** >= 18.0.0 (requires native `fetch`)
+- **API Key** from a compatible LLM provider (DeepSeek, OpenAI, Azure OpenAI, etc.)
+- **Angular CLI** (to extract i18n strings with `ng extract-i18n`)
+
+---
+
+## Installation
+
+### 1. Clone or download the project
 
 ```bash
 cd angular-i18n-translator
 ```
 
-### 2. Instalar dependencias
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Configurar variables de entorno
+### 3. Configure environment variables
 
 ```bash
-# Copiar el archivo de ejemplo
+# Copy the example file
 cp .env.example .env
 
-# Editar .env y anadir tu clave API
-# LLM_API_KEY=tu-clave-api-aqui
+# Edit .env and add your API key
+# LLM_API_KEY=your-api-key-here
 ```
 
-### 4. Configurar idiomas
+### 4. Configure languages
 
-Edita `i18n.config.json` segun tus necesidades (ver seccion [Configuracion](#configuracion)).
+Edit `i18n.config.json` as needed (see [Configuration](#configuration) section).
 
 ---
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 angular-i18n-translator/
 ├── src/
-│   ├── index.js          # Punto de entrada CLI y manejadores de comandos
-│   ├── config.js         # Carga y validacion de configuracion
-│   ├── xlf-parser.js     # Parser y generador de archivos XLF
-│   ├── csv-converter.js  # Conversion entre XLF y CSV
-│   ├── batch-manager.js  # Gestion de batches para traduccion
-│   ├── llm-client.js     # Cliente HTTP para APIs LLM
-│   ├── validator.js      # Validacion de CSV (interpolaciones, IDs, cobertura)
-│   └── cleaner.js        # Limpieza de directorios generados
+│   ├── index.js          # CLI entry point and command handlers
+│   ├── config.js         # Configuration loading and validation
+│   ├── xlf-parser.js    # XLF file parser and generator
+│   ├── csv-converter.js  # Conversion between XLF and CSV
+│   ├── batch-manager.js  # Batch management for translation
+│   ├── llm-client.js    # HTTP client for LLM APIs
+│   ├── validator.js     # CSV validation (interpolations, IDs, coverage)
+│   └── cleaner.js       # Cleanup of generated directories
 ├── batches/
-│   ├── pending/          # Batches pendientes de traducir
-│   └── translated/       # Batches ya traducidos
-├── dist-i18n/            # Archivos XLF traducidos (output)
-├── .env.example          # Template de variables de entorno
-├── .env                  # Variables de entorno (NO versionar)
-├── .gitignore            # Archivos excluidos de Git
-├── i18n.config.json      # Configuracion principal
-├── messages.xlf          # Archivo XLF fuente (de Angular)
-├── messages.csv          # CSV intermedio
-├── messages.translated.csv # CSV con traducciones
-├── package.json          # Dependencias y scripts npm
-└── README.md             # Esta documentacion
+│   ├── pending/          # Batches pending translation
+│   └── translated/      # Already translated batches
+├── dist-i18n/           # Translated XLF files (output)
+├── .env.example         # Environment variables template
+├── .env                 # Environment variables (DO NOT version)
+├── .gitignore           # Files excluded from Git
+├── i18n.config.json     # Main configuration
+├── messages.xlf         # Source XLF file (from Angular)
+├── messages.csv         # Intermediate CSV
+├── messages.translated.csv # CSV with translations
+├── package.json         # npm dependencies and scripts
+└── README.md            # This documentation
 ```
 
 ---
 
-## Configuracion
+## Configuration
 
-### Archivo `i18n.config.json`
+### `i18n.config.json` file
 
 ```json
 {
@@ -138,136 +138,136 @@ angular-i18n-translator/
 }
 ```
 
-### Descripcion de campos
+### Field Description
 
-| Campo | Tipo | Descripcion |
+| Field | Type | Description |
 |-------|------|-------------|
-| `languages` | Array | Lista de idiomas soportados con codigo, nombre y archivo de salida |
-| `sourceLanguage` | String | Codigo del idioma origen (debe estar en `languages`) |
-| `sourceFile` | String | Nombre del archivo XLF fuente extraido de Angular |
-| `csvOutput` | String | Nombre del archivo CSV intermedio |
-| `outputDir` | String | Directorio donde se guardan los XLF traducidos |
-| `batchDir` | String | Directorio para almacenar los batches de traduccion |
-| `llm.baseURL` | String | URL base de la API del proveedor LLM |
-| `llm.apiKey` | String | Clave API (usar `${LLM_API_KEY}` para variable de entorno) |
-| `llm.model` | String | Nombre del modelo a utilizar |
-| `llm.batchSize` | Number | Registros por batch (default: 50) |
-| `llm.concurrency` | Number | Batches simultaneos por idioma (default: 5) |
-| `llm.systemPrompt` | String | Prompt del sistema para el LLM (opcional) |
+| `languages` | Array | List of supported languages with code, name, and output file |
+| `sourceLanguage` | String | Source language code (must be in `languages`) |
+| `sourceFile` | String | Source XLF file name extracted from Angular |
+| `csvOutput` | String | Intermediate CSV file name |
+| `outputDir` | String | Directory where translated XLF files are saved |
+| `batchDir` | String | Directory for storing translation batches |
+| `llm.baseURL` | String | Base URL of the LLM provider API |
+| `llm.apiKey` | String | API key (use `${LLM_API_KEY}` for environment variable) |
+| `llm.model` | String | Model name to use |
+| `llm.batchSize` | Number | Records per batch (default: 50) |
+| `llm.concurrency` | Number | Simultaneous batches per language (default: 5) |
+| `llm.systemPrompt` | String | System prompt for the LLM (optional) |
 
 ---
 
-## Comandos
+## Commands
 
-### Comandos principales
+### Main Commands
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `npm run extract` | Muestra el comando para extraer cadenas i18n de Angular |
-| `npm run xlf-to-csv` | Convierte el archivo XLF a formato CSV |
-| `npm run csv-to-xlf` | Convierte el CSV traducido a archivos XLF por idioma |
-| `npm run translate:split` | Divide el CSV en batches para traduccion |
-| `npm run translate:run` | Ejecuta la traduccion con LLM (idiomas en secuencia, batches en paralelo) |
-| `npm run translate:merge` | Fusiona los batches traducidos en un CSV final |
-| `npm run translate:all` | Ejecuta el pipeline completo de traduccion |
-| `npm run validate` | Valida la consistencia del CSV |
-| `npm run clean` | Limpia todos los archivos generados |
+| `npm run extract` | Shows the command to extract i18n strings from Angular |
+| `npm run xlf-to-csv` | Converts XLF file to CSV format |
+| `npm run csv-to-xlf` | Converts translated CSV to XLF files per language |
+| `npm run translate:split` | Splits CSV into batches for translation |
+| `npm run translate:run` | Executes translation with LLM (languages in sequence, batches in parallel) |
+| `npm run translate:merge` | Merges translated batches into a final CSV |
+| `npm run translate:all` | Executes the complete translation pipeline |
+| `npm run validate` | Validates CSV consistency |
+| `npm run clean` | Cleans all generated files |
 
-### Opciones adicionales
+### Additional Options
 
 ```bash
-# Forzar re-traduccion de batches ya traducidos
+# Force re-translation of already translated batches
 npm run translate:run -- --force
 
-# Limpiar solo archivos CSV
+# Clean only CSV files
 node src/index.js clean --csv-only
 
-# Limpiar solo directorios de batches
+# Clean only batch directories
 node src/index.js clean --batches-only
 
-# Limpiar solo directorio de salida
+# Clean only output directory
 node src/index.js clean --output-only
 
-# Limpiar batches y salida, mantener CSV
+# Clean batches and output, keep CSV
 node src/index.js clean --keep-csv
 ```
 
 ---
 
-## Flujo de Trabajo
+## Workflow
 
-### Paso 1: Extraer cadenas i18n de Angular
+### Step 1: Extract i18n strings from Angular
 
 ```bash
-# Desde tu proyecto Angular
+# From your Angular project
 ng extract-i18n --output-path src/locale --out-file messages.xlf
 
-# O para Angular 17+ con esbuild
+# Or for Angular 17+ with esbuild
 ng extract-i18n --format xlf2 --output-path src/locale
 ```
 
-Copia el archivo `messages.xlf` generado al directorio de esta herramienta.
+Copy the generated `messages.xlf` file to this tool's directory.
 
-### Paso 2: Convertir XLF a CSV
+### Step 2: Convert XLF to CSV
 
 ```bash
 npm run xlf-to-csv
 ```
 
-Esto genera `messages.csv` con columnas para cada idioma destino.
+This generates `messages.csv` with columns for each target language.
 
-### Paso 3: Ejecutar traduccion completa (recomendado)
+### Step 3: Run complete translation (recommended)
 
 ```bash
 npm run translate:all
 ```
 
-Este comando ejecuta automaticamente:
-1. XLF a CSV
-2. Division en batches
-3. Traduccion con LLM (idiomas procesados **secuencialmente**, batches en paralelo)
-4. Fusion de batches
-5. CSV a XLF
+This command automatically executes:
+1. XLF to CSV
+2. Batch splitting
+3. LLM translation (languages processed **sequentially**, batches in parallel)
+4. Batch merging
+5. CSV to XLF
 
-> **Nota importante**: Los idiomas se procesan secuencialmente (uno despues de otro) para evitar conflictos en los archivos de batches traducidos. Dentro de cada idioma, los batches se procesan en paralelo segun el parametro `concurrency`.
+> **Important Note**: Languages are processed sequentially (one after another) to avoid conflicts in translated batch files. Within each language, batches are processed in parallel according to the `concurrency` parameter.
 
-### Alternativa: Ejecutar pasos individualmente
+### Alternative: Execute steps individually
 
 ```bash
-# 1. Dividir en batches
+# 1. Split into batches
 npm run translate:split
 
-# 2. Ejecutar traduccion
+# 2. Run translation
 npm run translate:run
 
-# 3. Fusionar resultados
+# 3. Merge results
 npm run translate:merge
 
-# 4. Generar XLF finales
+# 4. Generate final XLF files
 npm run csv-to-xlf
 ```
 
-### Paso 4: Validar traducciones
+### Step 4: Validate translations
 
 ```bash
 npm run validate
 ```
 
-### Paso 5: Copiar archivos traducidos
+### Step 5: Copy translated files
 
-Los archivos XLF traducidos estan en `dist-i18n/`. Copialos a tu proyecto Angular:
+The translated XLF files are in `dist-i18n/`. Copy them to your Angular project:
 
 ```bash
-cp dist-i18n/*.xlf tu-proyecto-angular/src/locale/
+cp dist-i18n/*.xlf your-angular-project/src/locale/
 ```
 
 ---
 
-## Proveedores LLM Soportados
+## Supported LLM Providers
 
-La herramienta es compatible con cualquier API que siga el formato OpenAI:
+The tool is compatible with any API following the OpenAI format:
 
-### DeepSeek (recomendado por costo)
+### DeepSeek (recommended for cost)
 
 ```json
 {
@@ -296,7 +296,7 @@ La herramienta es compatible con cualquier API que siga el formato OpenAI:
 ```json
 {
   "llm": {
-    "baseURL": "https://tu-recurso.openai.azure.com/openai/deployments/tu-deployment",
+    "baseURL": "https://your-resource.openai.azure.com/openai/deployments/your-deployment",
     "model": "gpt-4",
     "apiKey": "${LLM_API_KEY}"
   }
@@ -315,30 +315,30 @@ La herramienta es compatible con cualquier API que siga el formato OpenAI:
 }
 ```
 
-### Otros proveedores compatibles
+### Other compatible providers
 
 - **Groq**: `https://api.groq.com/openai/v1`
-- **Anthropic** (via proxy compatible)
+- **Anthropic** (via compatible proxy)
 - **OpenRouter**: `https://openrouter.ai/api/v1`
-- Cualquier API compatible con el formato OpenAI
+- Any OpenAI-compatible API
 
 ---
 
-## Seguridad
+## Security
 
-### Advertencias importantes
+### Important Warnings
 
-> **NUNCA** committees el archivo `.env` o cualquier archivo que contenga claves API.
+> **NEVER** commit the `.env` file or any file containing API keys.
 >
-> El archivo `.env` esta excluido de Git mediante `.gitignore`, pero debes verificar que nunca se incluya accidentalmente.
+> The `.env` file is excluded from Git via `.gitignore`, but you must verify it is never accidentally included.
 
-> **NUNCA** hardcodees claves API directamente en `i18n.config.json` si vas a versionar ese archivo.
+> **NEVER** hardcode API keys directly in `i18n.config.json` if you plan to version that file.
 
-### Mejores practicas
+### Best Practices
 
-1. **Usa variables de entorno**: El archivo `.env` esta excluido de Git mediante `.gitignore`
+1. **Use environment variables**: The `.env` file is excluded from Git via `.gitignore`
 
-2. **Referencia variables en config**: Usa la sintaxis `${LLM_API_KEY}` en `i18n.config.json`:
+2. **Reference variables in config**: Use the `${LLM_API_KEY}` syntax in `i18n.config.json`:
    ```json
    {
      "llm": {
@@ -347,17 +347,17 @@ La herramienta es compatible con cualquier API que siga el formato OpenAI:
    }
    ```
 
-3. **Verifica antes de commit**: Asegurate de que `.env` no se incluya:
+3. **Verify before commit**: Make sure `.env` is not included:
    ```bash
    git status
-   # .env NO debe aparecer en la lista de archivos a committear
+   # .env should NOT appear in the list of files to commit
    ```
 
-4. **Rota claves comprometidas**: Si accidentalmente committeas una clave, rotala inmediatamente desde el panel del proveedor.
+4. **Rotate compromised keys**: If you accidentally commit a key, rotate it immediately from the provider's dashboard.
 
-5. **Usa claves con permisos minimos**: Limita las claves API solo a los permisos necesarios.
+5. **Use keys with minimum permissions**: Limit API keys to only the necessary permissions.
 
-6. **Revisa el .gitignore**: Asegurate de que tu `.gitignore` incluya:
+6. **Review .gitignore**: Make sure your `.gitignore` includes:
    ```gitignore
    # Environment variables (SECURITY - Never commit these!)
    .env
@@ -367,140 +367,140 @@ La herramienta es compatible con cualquier API que siga el formato OpenAI:
 
 ---
 
-## Solucion de Problemas
+## Troubleshooting
 
 ### Error: "Configuration file not found"
 
-**Causa**: No existe `i18n.config.json` en el directorio raiz.
+**Cause**: `i18n.config.json` does not exist in the root directory.
 
-**Solucion**: Crea el archivo de configuracion:
+**Solution**: Create the configuration file:
 ```bash
-# Asegurate de estar en el directorio correcto
+# Make sure you are in the correct directory
 ls i18n.config.json
 ```
 
-### Error: "LLM_API_KEY is not set" o "apiKey is empty"
+### Error: "LLM_API_KEY is not set" or "apiKey is empty"
 
-**Causa**: La variable de entorno no esta configurada o el archivo `.env` no existe.
+**Cause**: The environment variable is not set or the `.env` file does not exist.
 
-**Solucion**: 
+**Solution**:
 ```bash
-# Verifica que .env existe y contiene la clave
+# Verify that .env exists and contains the key
 cat .env
-# Debe mostrar: LLM_API_KEY=tu-clave-aqui
+# Should show: LLM_API_KEY=your-key-here
 
-# Si no existe, crealo:
+# If it doesn't exist, create it:
 cp .env.example .env
-# Luego edita .env con tu clave real
+# Then edit .env with your real key
 ```
 
 ### Error: "API error 401"
 
-**Causa**: Clave API invalida o expirada.
+**Cause**: Invalid or expired API key.
 
-**Solucion**: Verifica que la clave API sea correcta y tenga fondos/saldo.
+**Solution**: Verify that the API key is correct and has funds/credit.
 
 ### Error: "API error 429 - Rate limit"
 
-**Causa**: Demasiadas solicitudes en poco tiempo.
+**Cause**: Too many requests in a short time.
 
-**Solucion**: 
-- Reduce `concurrency` en la configuracion
-- Aumenta `batchSize` para hacer menos llamadas
-- Espera unos minutos antes de reintentar
+**Solution**:
+- Reduce `concurrency` in the configuration
+- Increase `batchSize` to make fewer calls
+- Wait a few minutes before retrying
 
 ### Error: "Request timeout"
 
-**Causa**: La API tarda demasiado en responder.
+**Cause**: The API takes too long to respond.
 
-**Solucion**: 
-- El timeout esta configurado en 60 segundos
-- Verifica tu conexion a internet
-- Intenta con un modelo mas rapido
+**Solution**:
+- Timeout is set to 60 seconds
+- Check your internet connection
+- Try with a faster model
 
-### Las traducciones pierden interpolaciones
+### Translations lose interpolations
 
-**Causa**: El LLM no sigue las instrucciones correctamente.
+**Cause**: The LLM does not follow instructions correctly.
 
-**Solucion**: 
-- Verifica que el `systemPrompt` incluya instrucciones sobre interpolaciones
-- Prueba con un modelo mas capaz (gpt-4o en lugar de gpt-3.5)
-- Revisa el reporte de validacion: `npm run validate`
+**Solution**:
+- Verify that the `systemPrompt` includes instructions about interpolations
+- Try with a more capable model (gpt-4o instead of gpt-3.5)
+- Check the validation report: `npm run validate`
 
-### Los archivos XLF no se generan correctamente
+### XLF files are not generated correctly
 
-**Causa**: El CSV traducido tiene formato incorrecto.
+**Cause**: The translated CSV has incorrect format.
 
-**Solucion**:
-1. Ejecuta validacion: `npm run validate`
-2. Revisa `messages.translated.csv` manualmente
-3. Asegurate de que todas las columnas de idiomas tengan contenido
+**Solution**:
+1. Run validation: `npm run validate`
+2. Manually review `messages.translated.csv`
+3. Make sure all language columns have content
 
 ### Error: "CSV file not found"
 
-**Causa**: Falta ejecutar `xlf-to-csv` antes de otros comandos.
+**Cause**: Need to run `xlf-to-csv` before other commands.
 
-**Solucion**:
+**Solution**:
 ```bash
 npm run xlf-to-csv
 npm run translate:all
 ```
 
-### Los batches no se procesan
+### Batches are not being processed
 
-**Causa**: No hay batches pendientes o ya estan traducidos.
+**Cause**: No pending batches or they are already translated.
 
-**Solucion**:
+**Solution**:
 ```bash
-# Forzar re-procesamiento
+# Force re-processing
 npm run translate:run -- --force
 
-# O limpiar y empezar de nuevo
+# Or clean and start over
 npm run clean
 npm run translate:all
 ```
 
 ### Error: "XLF file not found"
 
-**Causa**: El archivo `messages.xlf` no existe en el directorio.
+**Cause**: The `messages.xlf` file does not exist in the directory.
 
-**Solucion**:
+**Solution**:
 ```bash
-# Verifica que el archivo existe
+# Verify the file exists
 ls messages.xlf
 
-# Si no existe, extraelo de tu proyecto Angular
+# If it doesn't exist, extract it from your Angular project
 ng extract-i18n --output-path . --out-file messages.xlf
 ```
 
-### Error: "Invalid JSON" en configuracion
+### Error: "Invalid JSON" in configuration
 
-**Causa**: El archivo `i18n.config.json` tiene errores de sintaxis JSON.
+**Cause**: The `i18n.config.json` file has JSON syntax errors.
 
-**Solucion**:
-- Valida el JSON en un linter online
-- Asegurate de que todas las comas y comillas esten correctas
-- Verifica que no haya comentarios (JSON no soporta comentarios)
-
----
-
-## Dependencias
-
-| Paquete | Version | Proposito |
-|---------|---------|-----------|
-| `@xmldom/xmldom` | ^0.8.10 | Parser XML para archivos XLF |
-| `csv-parse` | ^5.5.6 | Lectura de archivos CSV |
-| `csv-stringify` | ^6.5.1 | Escritura de archivos CSV |
-| `dotenv` | ^16.6.1 | Carga de variables de entorno |
+**Solution**:
+- Validate the JSON in an online linter
+- Make sure all commas and quotes are correct
+- Verify there are no comments (JSON does not support comments)
 
 ---
 
-## Licencia
+## Dependencies
 
-MIT License - Uso libre para proyectos personales y comerciales.
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@xmldom/xmldom` | ^0.8.10 | XML parser for XLF files |
+| `csv-parse` | ^5.5.6 | CSV file reading |
+| `csv-stringify` | ^6.5.1 | CSV file writing |
+| `dotenv` | ^16.6.1 | Environment variable loading |
 
 ---
 
-## Contribuciones
+## License
 
-Las contribuciones son bienvenidas. Por favor, abre un issue o pull request para sugerir mejoras o reportar bugs.
+MIT License - Free for personal and commercial projects.
+
+---
+
+## Contributions
+
+Contributions are welcome. Please open an issue or pull request to suggest improvements or report bugs.
