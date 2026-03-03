@@ -128,9 +128,9 @@ angular-i18n-translator/
   "outputDir": "dist-i18n",
   "batchDir": "batches",
   "llm": {
-    "baseURL": "https://api.deepseek.com/v1",
+    "baseURL": "${LLM_BASE_URL}",
     "apiKey": "${LLM_API_KEY}",
-    "model": "deepseek-chat",
+    "model": "${LLM_MODEL}",
     "batchSize": 50,
     "concurrency": 5,
     "systemPrompt": "You are a professional translator..."
@@ -148,9 +148,9 @@ angular-i18n-translator/
 | `csvOutput` | String | Intermediate CSV file name |
 | `outputDir` | String | Directory where translated XLF files are saved |
 | `batchDir` | String | Directory for storing translation batches |
-| `llm.baseURL` | String | Base URL of the LLM provider API |
+| `llm.baseURL` | String | Base URL of the LLM provider API (use `${LLM_BASE_URL}` for environment variable) |
 | `llm.apiKey` | String | API key (use `${LLM_API_KEY}` for environment variable) |
-| `llm.model` | String | Model name to use |
+| `llm.model` | String | Model name to use (use `${LLM_MODEL}` for environment variable) |
 | `llm.batchSize` | Number | Records per batch (default: 50) |
 | `llm.concurrency` | Number | Simultaneous batches per language (default: 5) |
 | `llm.systemPrompt` | String | System prompt for the LLM (optional) |
@@ -272,8 +272,8 @@ The tool is compatible with any API following the OpenAI format:
 ```json
 {
   "llm": {
-    "baseURL": "https://api.deepseek.com/v1",
-    "model": "deepseek-chat",
+    "baseURL": "${LLM_BASE_URL}",
+    "model": "${LLM_MODEL}",
     "apiKey": "${LLM_API_KEY}"
   }
 }
@@ -284,8 +284,8 @@ The tool is compatible with any API following the OpenAI format:
 ```json
 {
   "llm": {
-    "baseURL": "https://api.openai.com/v1",
-    "model": "gpt-4o-mini",
+    "baseURL": "${LLM_BASE_URL}",
+    "model": "${LLM_MODEL}",
     "apiKey": "${LLM_API_KEY}"
   }
 }
@@ -296,8 +296,8 @@ The tool is compatible with any API following the OpenAI format:
 ```json
 {
   "llm": {
-    "baseURL": "https://your-resource.openai.azure.com/openai/deployments/your-deployment",
-    "model": "gpt-4",
+    "baseURL": "${LLM_BASE_URL}",
+    "model": "${LLM_MODEL}",
     "apiKey": "${LLM_API_KEY}"
   }
 }
@@ -308,8 +308,8 @@ The tool is compatible with any API following the OpenAI format:
 ```json
 {
   "llm": {
-    "baseURL": "http://localhost:11434/v1",
-    "model": "llama3.1",
+    "baseURL": "${LLM_BASE_URL}",
+    "model": "${LLM_MODEL}",
     "apiKey": "ollama"
   }
 }
@@ -424,7 +424,7 @@ cp .env.example .env
 
 **Solution**:
 - Verify that the `systemPrompt` includes instructions about interpolations
-- Try with a more capable model (gpt-4o instead of gpt-3.5)
+- Try with a more capable model (check your provider's available models)
 - Check the validation report: `npm run validate`
 
 ### XLF files are not generated correctly
