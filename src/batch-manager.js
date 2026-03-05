@@ -273,8 +273,8 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
 
   // Set up directories
   const pendingDir = join(batchDir, PENDING_DIR);
-  const translatedDir = join(batchDir, TRANSLATED_DIR);
-  
+  const translatedDir = join(batchDir, TRANSLATED_DIR, targetLanguage);
+
   // Ensure translated directory exists
   await ensureDirectory(translatedDir);
 
@@ -342,92 +342,147 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
     throw new Error('csvFilePath is required');
   }
 
-  // Set up directories
-  const translatedDir = join(batchDir, TRANSLATED_DIR);
+  // Set up base translated directory
+  const translatedBaseDir = join(batchDir, TRANSLATED_DIR);
 
   // Check if translated directory exists
-  if (!existsSync(translatedDir)) {
-    throw new Error(`Translated batches directory not found: ${translatedDir}`);
+  if (!existsSync(translatedBaseDir)) {
+    throw new Error(`Translated batches directory not found: ${translatedBaseDir}`);
   }
 
-  // Get all translated batch files
-  let translatedFiles;
+  // Get all language subdirectories
+  let languageDirs;
   try {
-    translatedFiles = await readdir(translatedDir);
+    const entries = await readdir(translatedBaseDir);
+    // Filter only directories (each represents a language)
+    const languages = [];
+    for (const entry of entries) {
+      const entryPath = join(translatedBaseDir, entry);
+      try {
+        const statInfo = await stat(entryPath);
+        if (statInfo.isDirectory()) {
+          languages.push(entry);
+        }
+      } catch (err) {
+        // Skip entries we can't stat
+      }
+    }
+    languageDirs = languages;
   } catch (err) {
-    throw new Error(`Failed to read translated directory: ${err.message}`);
+    throw new Error(`Failed to read translated base directory: ${err.message}`);
   }
 
-  // Filter for CSV files and sort numerically
-  const batchFiles = sortBatchFilesNumerically(
-    translatedFiles.filter(f => f.endsWith('.csv'))
-  );
-
-  if (batchFiles.length === 0) {
-    throw new Error('No translated batch files found');
+  if (languageDirs.length === 0) {
+    throw new Error('No language directories found in translated folder');
   }
 
-  console.log(`[Batch] Found ${batchFiles.length} translated batch files`);
+  console.log(`[Batch] Found ${languageDirs.length} language directories: ${languageDirs.join(', ')}`);
 
   // Read original CSV to get column structure and preserve non-translated records
   let originalRecords = [];
   let columns = [];
-  
+
   if (existsSync(csvFilePath)) {
     originalRecords = await readCSV(csvFilePath);
     columns = Object.keys(originalRecords[0] || {});
   }
 
-  // Read all translated batches
-  const allTranslatedRecords = [];
-  
-  for (const batchFile of batchFiles) {
-    const batchFilePath = join(translatedDir, batchFile);
-    console.log(`[Batch] Reading translated batch: ${batchFile}`);
-    
+  // Collect translated data from all languages
+  // Key: record id, Value: object with translations for each language
+  const translationsById = new Map();
+
+  for (const lang of languageDirs) {
+    const langDir = join(translatedBaseDir, lang);
+    console.log(`\n[Batch] Processing language: ${lang}`);
+
+    // Get all batch files for this language
+    let batchFiles;
     try {
-      const records = await readCSV(batchFilePath);
-      allTranslatedRecords.push(...records);
+      const files = await readdir(langDir);
+      batchFiles = sortBatchFilesNumerically(
+        files.filter(f => f.endsWith('.csv'))
+      );
     } catch (err) {
-      console.error(`[Batch] Warning: Failed to read batch ${batchFile}: ${err.message}`);
+      console.error(`[Batch] Warning: Failed to read language directory ${lang}: ${err.message}`);
+      continue;
+    }
+
+    if (batchFiles.length === 0) {
+      console.log(`[Batch] No batch files found for language: ${lang}`);
+      continue;
+    }
+
+    console.log(`[Batch] Found ${batchFiles.length} batch files for ${lang}`);
+
+    // Read all batches for this language
+    for (const batchFile of batchFiles) {
+      const batchFilePath = join(langDir, batchFile);
+      console.log(`[Batch] Reading ${lang}/${batchFile}`);
+
+      try {
+        const records = await readCSV(batchFilePath);
+
+        for (const record of records) {
+          if (!record.id) continue;
+
+          if (!translationsById.has(record.id)) {
+            translationsById.set(record.id, {});
+          }
+
+          const translations = translationsById.get(record.id);
+          // Store the translation for this language
+          if (record[lang] !== undefined) {
+            translations[lang] = record[lang];
+          }
+        }
+      } catch (err) {
+        console.error(`[Batch] Warning: Failed to read batch ${batchFile}: ${err.message}`);
+      }
     }
   }
 
-  console.log(`[Batch] Total translated records: ${allTranslatedRecords.length}`);
+  console.log(`\n[Batch] Total unique records with translations: ${translationsById.size}`);
 
-  // Create a map of translated content keyed by ID
-  // This prioritizes translated content over original
-  const translatedMap = new Map();
-  
-  for (const record of allTranslatedRecords) {
-    if (record.id) {
-      translatedMap.set(record.id, record);
-    }
-  }
-
-  // If we have original records, merge them
+  // Build merged records
   let mergedRecords;
-  
+
   if (originalRecords.length > 0) {
     mergedRecords = originalRecords.map(originalRecord => {
       const id = originalRecord.id;
-      
-      if (id && translatedMap.has(id)) {
-        // Use translated record, but preserve the ID
-        const translated = translatedMap.get(id);
-        return { ...translated, id };
+
+      if (id && translationsById.has(id)) {
+        // Merge translations into the original record
+        const translations = translationsById.get(id);
+        return { ...originalRecord, ...translations };
       }
-      
+
       // Keep original if no translation available
       return originalRecord;
     });
-    
-    console.log(`[Batch] Merged ${originalRecords.length} records (${translatedMap.size} translated)`);
+
+    console.log(`[Batch] Merged ${originalRecords.length} records (${translationsById.size} with translations)`);
   } else {
-    // No original file, use translated records directly
-    mergedRecords = allTranslatedRecords;
-    columns = Object.keys(mergedRecords[0] || {});
-    console.log(`[Batch] Using ${mergedRecords.length} translated records directly`);
+    // No original file, build records from translations
+    mergedRecords = [];
+    for (const [id, translations] of translationsById) {
+      mergedRecords.push({ id, ...translations });
+    }
+
+    // Determine columns from all translations
+    const allColumns = new Set(['id']);
+    for (const [id, translations] of translationsById) {
+      Object.keys(translations).forEach(col => allColumns.add(col));
+    }
+    columns = Array.from(allColumns);
+
+    console.log(`[Batch] Built ${mergedRecords.length} records from translations`);
+  }
+
+  // Ensure all language columns are included in the output
+  for (const lang of languageDirs) {
+    if (!columns.includes(lang)) {
+      columns.push(lang);
+    }
   }
 
   // Generate output filename
@@ -436,13 +491,13 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
   const baseName = lastSlash >= 0 ? parsedPath.substring(lastSlash + 1) : parsedPath;
   const extIndex = baseName.lastIndexOf('.');
   const nameWithoutExt = extIndex >= 0 ? baseName.substring(0, extIndex) : baseName;
-  
+
   const outputFilePath = join(dirname(csvFilePath) || '.', `${nameWithoutExt}.translated.csv`);
-  
+
   // Write merged CSV
   await writeCSV(outputFilePath, mergedRecords, columns);
-  
-  console.log(`[Batch] Merged CSV saved to: ${outputFilePath}`);
+
+  console.log(`\n[Batch] Merged CSV saved to: ${outputFilePath}`);
   return outputFilePath;
 }
 

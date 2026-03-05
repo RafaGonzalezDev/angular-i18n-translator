@@ -306,36 +306,57 @@ async function handleTranslateRun(options = {}) {
   log(`Languages: ${targetLanguages.map(l => colors.highlight(l)).join(', ')}`);
   console.log();
   
-  const results = [];
-  
-  for (const lang of targetLanguages) {
-    const spinner = createSpinner(`Translating ${colors.highlight(lang)}`);
-    spinner.start();
-    
+  // Create a spinner for each language
+  const spinners = {};
+  targetLanguages.forEach(lang => {
+    spinners[lang] = createSpinner(`Translating ${colors.highlight(lang)} - Waiting...`);
+    spinners[lang].start();
+  });
+
+  // Process all languages in parallel
+  const languagePromises = targetLanguages.map(async (lang) => {
     try {
       const summary = await runBatches(batchDir, lang, llmConfig, { 
         force, 
         concurrency,
         onProgress: (batchNumber, totalBatches, status) => {
           const progress = `${colors.number(batchNumber)}/${colors.number(totalBatches)}`;
-          spinner.text = `Translating ${colors.highlight(lang)} [${progress} batches]`;
+          spinners[lang].text = `Translating ${colors.highlight(lang)} [${progress} batches]`;
         }
       });
       
-      spinner.succeed(`${colors.highlight(lang)} completed ` +
+      spinners[lang].succeed(`${colors.highlight(lang)} completed ` +
           `(processed=${colors.number(summary.processed)}, ` +
           `skipped=${colors.number(summary.skipped)}, ` +
           `failed=${colors.number(summary.failed)})`);
       
-      results.push({ status: 'fulfilled', value: summary });
+      return { lang, status: 'fulfilled', value: summary };
     } catch (err) {
-      spinner.fail(`${colors.highlight(lang)} failed: ${err.message}`);
-      results.push({ status: 'rejected', reason: err });
+      spinners[lang].fail(`${colors.highlight(lang)} failed: ${err.message}`);
+      return { lang, status: 'rejected', reason: err };
     }
-  }
+  });
+
+  // Wait for all languages to complete
+  const results = await Promise.allSettled(languagePromises);
+
+  // Convert results from Promise.allSettled to the expected format
+  const formattedResults = results.map(result => {
+    if (result.status === 'fulfilled') {
+      return { 
+        status: 'fulfilled', 
+        value: result.value.value 
+      };
+    } else {
+      return { 
+        status: 'rejected', 
+        reason: result.value.reason 
+      };
+    }
+  });
   
   // Print detailed report
-  const { successful, failed } = printTranslationReport(results, targetLanguages);
+  const { successful, failed } = printTranslationReport(formattedResults, targetLanguages);
   
   if (successful.length > 0) {
     if (failed.length > 0) {
