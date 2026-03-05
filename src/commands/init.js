@@ -21,28 +21,50 @@ const { input, password, select, checkbox, confirm } = prompts;
 
 const LLM_PROVIDERS = [
   { 
-    name: 'DeepSeek (Recommended - Best value)', 
-    value: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat' } 
+    name: 'DeepSeek', 
+    value: { 
+      name: 'DeepSeek',
+      baseURL: 'https://api.deepseek.com', 
+      model: '',
+      docsURL: 'https://api-docs.deepseek.com/'
+    } 
   },
   { 
-    name: 'OpenAI (GPT-4o-mini)', 
-    value: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini' } 
+    name: 'OpenAI', 
+    value: { 
+      name: 'OpenAI',
+      baseURL: 'https://api.openai.com/v1', 
+      model: '',
+      docsURL: 'https://platform.openai.com/docs/models'
+    } 
   },
   { 
-    name: 'OpenAI (GPT-4o)', 
-    value: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' } 
-  },
-  { 
-    name: 'Azure OpenAI', 
-    value: { baseURL: '', model: '', isCustom: true } 
+    name: 'Anthropic', 
+    value: { 
+      name: 'Anthropic',
+      baseURL: 'https://api.anthropic.com/v1', 
+      model: '',
+      docsURL: 'https://docs.anthropic.com/en/docs/about-claude/models'
+    } 
   },
   { 
     name: 'Ollama (Local)', 
-    value: { baseURL: 'http://localhost:11434/v1', model: 'llama3' } 
+    value: { 
+      name: 'Ollama',
+      baseURL: 'http://localhost:11434/v1', 
+      model: '',
+      docsURL: 'https://ollama.com/library'
+    } 
   },
   { 
-    name: 'Custom Provider', 
-    value: { baseURL: '', model: '', isCustom: true } 
+    name: 'Custom Provider (OpenAI-compatible)', 
+    value: { 
+      name: 'Custom',
+      baseURL: '', 
+      model: '',
+      isCustom: true,
+      docsURL: 'https://platform.openai.com/docs/models'
+    } 
   },
 ];
 
@@ -188,6 +210,25 @@ async function askProvider() {
 }
 
 /**
+ * Step 2b: Ask for model name based on selected provider
+ */
+async function askModel(provider) {
+  const { input } = await import('@inquirer/prompts');
+  
+  const model = await input({
+    message: `Enter model name for ${provider.name} (see: ${provider.docsURL}):`,
+    validate: (value) => {
+      if (!value || value.trim().length === 0) {
+        return 'Model name is required. Please check the documentation link above for available models.';
+      }
+      return true;
+    }
+  });
+  
+  return model.trim();
+}
+
+/**
  * Step 3: Ask for custom URL and model (if needed)
  */
 async function askCustomProviderConfig(provider) {
@@ -227,6 +268,19 @@ async function askCustomProviderConfig(provider) {
  * Step 4: Select Source Language
  */
 async function askSourceLanguage() {
+  const { confirm, select } = await import('@inquirer/prompts');
+  
+  // Primero preguntar si usar inglés como default
+  const useEnglish = await confirm({
+    message: 'Use English as the source language?',
+    default: true
+  });
+  
+  if (useEnglish) {
+    return 'en';
+  }
+  
+  // Si no, mostrar lista completa
   const sourceLanguage = await select({
     message: 'Select source language (the language of your original XLF file)',
     choices: getLanguageChoices(),
@@ -406,10 +460,23 @@ async function handleInit() {
   const apiKey = await askApiKey();
   
   // Step 2: LLM Provider
-  const providerSelection = await askProvider();
+  const provider = await askProvider();
   
-  // Step 3: Custom config if needed
-  const provider = await askCustomProviderConfig(providerSelection);
+  // Step 2b: Model name
+  const model = await askModel(provider);
+  
+  // Step 3: Build provider config
+  let providerConfig = { ...provider, model };
+  
+  // Step 3b: Custom config if needed
+  if (provider.isCustom) {
+    const customConfig = await askCustomProviderConfig(provider);
+    providerConfig = { 
+      ...providerConfig, 
+      baseURL: customConfig.baseURL,
+      model: customConfig.model || model
+    };
+  }
   
   // Step 4: Source Language
   const sourceLanguage = await askSourceLanguage();
@@ -429,9 +496,9 @@ async function handleInit() {
     ...config,
     llm: {
       ...config.llm,
-      baseURL: provider.baseURL,
+      baseURL: providerConfig.baseURL,
       apiKey: '***',
-      model: provider.model
+      model: providerConfig.model
     }
   };
   
@@ -449,7 +516,7 @@ async function handleInit() {
   
   try {
     // Update/create .env file
-    const envContent = updateEnvFile(envPath, apiKey, provider.baseURL, provider.model);
+    const envContent = updateEnvFile(envPath, apiKey, providerConfig.baseURL, providerConfig.model);
     writeFileSync(envPath, envContent, 'utf-8');
     
     // Create i18n.config.json

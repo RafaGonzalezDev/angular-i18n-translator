@@ -196,9 +196,13 @@ npm run init
 
 This will guide you through:
 1. API key configuration
-2. LLM provider selection
-3. Source and target languages
-4. Batch settings (optional)
+2. LLM provider selection (DeepSeek, OpenAI, Anthropic, Ollama, or Custom)
+3. Model name specification (with links to provider documentation)
+4. Source language confirmation (defaults to English)
+5. Target language selection
+6. Batch settings (optional)
+
+**Note on Model Selection**: The wizard does not pre-select specific models. You will need to enter the model name manually. The wizard provides links to each provider's model documentation to help you choose.
 
 The wizard creates:
 - `.env` - API credentials
@@ -319,60 +323,74 @@ cp dist-i18n/*.xlf your-angular-project/src/locale/
 
 The tool is compatible with any API following the OpenAI format:
 
-### DeepSeek (recommended for cost)
+### DeepSeek
 
 ```json
 {
   "llm": {
-    "baseURL": "${LLM_BASE_URL}",
-    "model": "${LLM_MODEL}",
+    "baseURL": "https://api.deepseek.com",
+    "model": "your-model-name",
     "apiKey": "${LLM_API_KEY}"
   }
 }
 ```
+
+See: https://api-docs.deepseek.com/
 
 ### OpenAI
 
 ```json
 {
   "llm": {
-    "baseURL": "${LLM_BASE_URL}",
-    "model": "${LLM_MODEL}",
+    "baseURL": "https://api.openai.com/v1",
+    "model": "your-model-name",
     "apiKey": "${LLM_API_KEY}"
   }
 }
 ```
 
-### Azure OpenAI
+See: https://platform.openai.com/docs/models
+
+### Anthropic
 
 ```json
 {
   "llm": {
-    "baseURL": "${LLM_BASE_URL}",
-    "model": "${LLM_MODEL}",
+    "baseURL": "https://api.anthropic.com/v1",
+    "model": "your-model-name",
     "apiKey": "${LLM_API_KEY}"
   }
 }
 ```
 
-### Ollama (local)
+See: https://docs.anthropic.com/en/docs/about-claude/models
+
+### Ollama (Local)
+
+For local development with Ollama:
 
 ```json
 {
   "llm": {
-    "baseURL": "${LLM_BASE_URL}",
-    "model": "${LLM_MODEL}",
+    "baseURL": "http://localhost:11434/v1",
+    "model": "your-model-name",
     "apiKey": "ollama"
   }
 }
 ```
 
-### Other compatible providers
+See: https://ollama.com/library
+
+### Other OpenAI-Compatible Providers
+
+You can use any provider that implements the OpenAI API format:
 
 - **Groq**: `https://api.groq.com/openai/v1`
-- **Anthropic** (via compatible proxy)
 - **OpenRouter**: `https://openrouter.ai/api/v1`
-- Any OpenAI-compatible API
+- **LocalAI**: `http://localhost:8080/v1`
+- Any other OpenAI-compatible endpoint
+
+When using the init wizard, select "Custom Provider" and enter your endpoint URL.
 
 ---
 
