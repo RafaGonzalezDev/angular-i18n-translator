@@ -15,7 +15,6 @@ import handleInit from './commands/init.js';
 import { 
   colors, 
   createSpinner, 
-  createMultiBar, 
   printHeader, 
   printSummaryLine,
   formatDuration 
@@ -239,15 +238,26 @@ async function handleTranslateSplit() {
   const batchDir = config.config.batchDir || 'batches';
   const batchSize = config.config.llm?.batchSize || 50;
   
-  const spinner = createSpinner(`Splitting ${colors.path(csvFile)} into batches`);
+  const spinner = createSpinner('Reading CSV and creating batches...');
   spinner.start();
   
   try {
-    const numBatches = await splitBatches(csvFile, batchSize, batchDir);
+    const result = await splitBatches(csvFile, batchSize, batchDir, {
+      verbose: globalOptions.verbose
+    });
     
-    spinner.succeed(`Created ${colors.number(numBatches)} batches in ${colors.path(batchDir + '/pending/')}`);
+    const batchCount = result.batchCount || result;
+    const recordCount = result.recordCount || 0;
+    
+    spinner.succeed(`Created ${batchCount} batches (${recordCount} records)`);
     
     logVerbose(`Batch size: ${batchSize} records per batch`);
+    
+    if (globalOptions.verbose && result.verboseInfo) {
+      logVerbose('Split details:');
+      logVerbose(`  Directories created: ${result.verboseInfo.directoriesCreated.length}`);
+      logVerbose(`  Files read: ${result.verboseInfo.filesRead.length}`);
+    }
     
     return 0;
   } catch (err) {
@@ -257,7 +267,7 @@ async function handleTranslateSplit() {
 }
 
 /**
- * Handle translate-run command with progress bars
+ * Handle translate-run command
  */
 async function handleTranslateRun(options = {}) {
   const { force = false } = options;
@@ -306,75 +316,70 @@ async function handleTranslateRun(options = {}) {
   log(`Processing ${colors.number(targetLanguages.length)} languages with concurrency: ${colors.number(concurrency)}`);
   log(`Languages: ${targetLanguages.map(l => colors.highlight(l)).join(', ')}`);
   console.log();
-  
-  // Create a MultiBar para mostrar progreso de todos los idiomas
-  const multibar = createMultiBar();
-  const bars = {};
+
+  // Spinner único global
+  const spinner = createSpinner(`Translating ${targetLanguages.length} languages...`);
+  spinner.start();
+
+  // Track de estado de cada idioma (solo para el reporte final)
+  const languageStatus = {};
+  targetLanguages.forEach(lang => {
+    languageStatus[lang] = { status: 'pending', batches: 0, total: 0 };
+  });
 
   const languagePromises = targetLanguages.map(async (lang) => {
-    // Crear barra para este idioma
-    bars[lang] = multibar.create(100, 0, { 
-      language: lang,
-      status: 'waiting'
+    const summary = await runBatches(batchDir, lang, llmConfig, { 
+      force, 
+      concurrency,
+      verbose,
+      onStart: (info) => {
+        // No actualizar el spinner - solo trackear estado interno
+        languageStatus[lang].status = 'translating';
+      },
+      onProgress: (batchNumber, totalBatches) => {
+        // Actualizar estado interno, NO el spinner
+        languageStatus[lang].batches = batchNumber;
+        languageStatus[lang].total = totalBatches;
+      },
+      onComplete: (summary) => {
+        languageStatus[lang].status = 'completed';
+        languageStatus[lang].summary = summary;
+      },
+      onError: (error) => {
+        languageStatus[lang].status = 'failed';
+        languageStatus[lang].error = error.error;
+      }
     });
-
-    try {
-      const summary = await runBatches(batchDir, lang, llmConfig, { 
-        force, 
-        concurrency,
-        verbose,
-        onStart: (info) => {
-          bars[lang].update(0, { 
-            language: lang,
-            status: 'starting'
-          });
-        },
-        onProgress: (batchNumber, totalBatches) => {
-          const percentage = (batchNumber / totalBatches) * 100;
-          bars[lang].update(percentage, {
-            language: lang,
-            status: `${batchNumber}/${totalBatches}`
-          });
-        },
-        onComplete: (summary) => {
-          bars[lang].update(100, {
-            language: lang,
-            status: 'done'
-          });
-          bars[lang].stop();
-        },
-        onError: (error) => {
-          bars[lang].update(0, {
-            language: lang,
-            status: 'failed'
-          });
-        }
-      });
-      
-      return { lang, status: 'fulfilled', value: summary };
-    } catch (err) {
-      bars[lang].update(0, {
-        language: lang,
-        status: 'failed'
-      });
-      return { lang, status: 'rejected', reason: err };
-    }
+    
+    return { lang, status: 'fulfilled', value: summary };
   });
 
   const results = await Promise.allSettled(languagePromises);
-  multibar.stop();
+  
+  // Calcular resultado global
+  const completedLanguages = Object.values(languageStatus).filter(l => l.status === 'completed').length;
+  const failedLanguages = Object.values(languageStatus).filter(l => l.status === 'failed').length;
+  const totalBatches = Object.values(languageStatus).reduce((sum, l) => sum + (l.summary?.processed || 0), 0);
+
+  if (failedLanguages === 0) {
+    spinner.succeed(`Translation complete (${totalBatches} batches processed)`);
+  } else if (completedLanguages > 0) {
+    spinner.warn(`${completedLanguages} languages completed, ${failedLanguages} failed (${totalBatches} batches processed)`);
+  } else {
+    spinner.fail(`All ${failedLanguages} languages failed to process`);
+  }
   
   // Convert results from Promise.allSettled to the expected format
   const formattedResults = results.map(result => {
     if (result.status === 'fulfilled') {
       return { 
         status: 'fulfilled', 
-        value: result.value.value 
+        value: result.value  // result.value already contains the object returned by the promise
       };
     } else {
       return { 
         status: 'rejected', 
-        reason: result.value.reason 
+        reason: result.reason  // rejected promises have reason directly, not in result.value.reason
       };
     }
   });
@@ -398,18 +403,28 @@ async function handleTranslateRun(options = {}) {
  */
 async function handleTranslateMerge() {
   printBanner('Merging Translated Batches');
-  
+
   const csvFile = config.config.csvOutput || 'messages.csv';
   const batchDir = config.config.batchDir || 'batches';
-  
+
   const spinner = createSpinner('Merging translated batches');
   spinner.start();
-  
+
   try {
-    const mergedFile = await mergeBatches(csvFile, batchDir);
-    
+    const result = await mergeBatches(csvFile, batchDir, {
+      verbose: globalOptions.verbose
+    });
+
+    const mergedFile = result.outputFile || result;
     spinner.succeed(`Merged CSV saved to: ${colors.path(mergedFile)}`);
-    
+
+    if (globalOptions.verbose && result.verboseInfo) {
+      logVerbose('Merge details:');
+      logVerbose(`  Languages processed: ${result.verboseInfo.languagesProcessed.join(', ')}`);
+      logVerbose(`  Total batches: ${result.verboseInfo.totalBatches}`);
+      logVerbose(`  Total records: ${result.verboseInfo.totalRecords}`);
+    }
+
     return 0;
   } catch (err) {
     spinner.fail(`Merge failed: ${err.message}`);
@@ -418,7 +433,7 @@ async function handleTranslateMerge() {
 }
 
 /**
- * Handle translate-all command with progress bars
+ * Handle translate-all command
  */
 async function handleTranslateAll(options = {}) {
   const { force = false } = options;
