@@ -21,12 +21,18 @@ const DEFAULT_CONCURRENCY = 5;
 /**
  * Ensures a directory exists, creating it if necessary
  * @param {string} dirPath - Directory path to ensure
+ * @param {Object} verboseInfo - Optional object to accumulate verbose information
+ * @returns {boolean} - True if directory was created, false if it already existed
  */
-async function ensureDirectory(dirPath) {
+async function ensureDirectory(dirPath, verboseInfo = null) {
   if (!existsSync(dirPath)) {
     await mkdir(dirPath, { recursive: true });
-    console.log(`[Batch] Created directory: ${dirPath}`);
+    if (verboseInfo) {
+      verboseInfo.directoriesCreated.push(dirPath);
+    }
+    return true;
   }
+  return false;
 }
 
 /**
@@ -45,10 +51,13 @@ function sortBatchFilesNumerically(files) {
 /**
  * Reads and parses a CSV file
  * @param {string} filePath - Path to CSV file
+ * @param {Object} verboseInfo - Optional object to accumulate verbose information
  * @returns {Promise<Array>} - Parsed CSV records
  */
-async function readCSV(filePath) {
-  console.log(`[Batch] Reading CSV file: ${filePath}`);
+async function readCSV(filePath, verboseInfo = null) {
+  if (verboseInfo) {
+    verboseInfo.filesRead.push(filePath);
+  }
   
   const content = await readFile(filePath, 'utf-8');
   
@@ -241,8 +250,8 @@ async function processBatchesInParallel(batchFiles, pendingDir, translatedDir, t
  * @param {string} batchDir - Base directory for batches
  * @param {string} targetLanguage - Target language code
  * @param {Object} config - LLM configuration (baseURL, model, apiKey, systemPrompt)
- * @param {Object} options - Options (force, onProgress, concurrency)
- * @returns {Promise<Object>} - Summary { processed, skipped, failed, errors: [] }
+ * @param {Object} options - Options (force, onProgress, concurrency, verbose)
+ * @returns {Promise<Object>} - Summary { processed, skipped, failed, errors: [], batchCount, verboseInfo? }
  */
 export async function runBatches(batchDir, targetLanguage, config, options = {}) {
   const { 
@@ -251,8 +260,18 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
     onStart,
     onComplete, 
     onError,
-    concurrency = DEFAULT_CONCURRENCY 
+    concurrency = DEFAULT_CONCURRENCY,
+    verbose = false
   } = options;
+  
+  // Initialize verbose info accumulator
+  const verboseInfo = {
+    directoriesCreated: [],
+    filesRead: [],
+    languagesProcessed: [],
+    totalBatches: 0,
+    totalRecords: 0
+  };
   
   if (onStart) {
     onStart({ 
@@ -278,11 +297,14 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
   const translatedDir = join(batchDir, TRANSLATED_DIR, targetLanguage);
 
   // Ensure translated directory exists
-  await ensureDirectory(translatedDir);
+  await ensureDirectory(translatedDir, verbose ? verboseInfo : null);
 
   // Check if pending directory exists
   if (!existsSync(pendingDir)) {
     const summary = { processed: 0, skipped: 0, failed: 0, errors: [], batchCount: 0 };
+    if (verbose) {
+      summary.verboseInfo = verboseInfo;
+    }
     if (onComplete) onComplete(summary);
     return summary;
   }
@@ -302,6 +324,9 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
 
   if (batchFiles.length === 0) {
     const summary = { processed: 0, skipped: 0, failed: 0, errors: [], batchCount: 0 };
+    if (verbose) {
+      summary.verboseInfo = verboseInfo;
+    }
     if (onComplete) onComplete(summary);
     return summary;
   }
@@ -318,6 +343,13 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
 
   // Add batch count to summary
   summary.batchCount = batchFiles.length;
+  
+  // Populate verbose info
+  if (verbose) {
+    verboseInfo.totalBatches = batchFiles.length;
+    verboseInfo.languagesProcessed.push(targetLanguage);
+    summary.verboseInfo = verboseInfo;
+  }
 
   // Report errors through callback if provided
   if (summary.errors.length > 0 && onError) {
@@ -337,12 +369,21 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
  * Merges translated batches back into a main CSV file
  * @param {string} csvFilePath - Path to the original CSV file (for reference)
  * @param {string} batchDir - Base directory for batches
- * @returns {Promise<string>} - Path to the merged CSV file
+ * @param {Object} options - Options (verbose)
+ * @returns {Promise<string|Object>} - Path to the merged CSV file, or object with outputFile and verboseInfo if verbose=true
  */
-export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
-  console.log(`[Batch] Starting batch merge`);
-  console.log(`[Batch] Original CSV: ${csvFilePath}`);
-  console.log(`[Batch] Batch directory: ${batchDir}`);
+export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR, options = {}) {
+  const { verbose = false } = options;
+  
+  // Initialize verbose info accumulator
+  const verboseInfo = {
+    languagesProcessed: [],
+    batchesPerLanguage: {},
+    totalBatches: 0,
+    totalRecords: 0,
+    filesRead: [],
+    directoriesCreated: []
+  };
 
   // Validate inputs
   if (!csvFilePath) {
@@ -383,14 +424,12 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
     throw new Error('No language directories found in translated folder');
   }
 
-  console.log(`[Batch] Found ${languageDirs.length} language directories: ${languageDirs.join(', ')}`);
-
   // Read original CSV to get column structure and preserve non-translated records
   let originalRecords = [];
   let columns = [];
 
   if (existsSync(csvFilePath)) {
-    originalRecords = await readCSV(csvFilePath);
+    originalRecords = await readCSV(csvFilePath, verbose ? verboseInfo : null);
     columns = Object.keys(originalRecords[0] || {});
   }
 
@@ -400,7 +439,12 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
 
   for (const lang of languageDirs) {
     const langDir = join(translatedBaseDir, lang);
-    console.log(`\n[Batch] Processing language: ${lang}`);
+    
+    // Track language processing
+    if (verbose) {
+      verboseInfo.languagesProcessed.push(lang);
+      verboseInfo.batchesPerLanguage[lang] = 0;
+    }
 
     // Get all batch files for this language
     let batchFiles;
@@ -410,24 +454,25 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
         files.filter(f => f.endsWith('.csv'))
       );
     } catch (err) {
-      console.error(`[Batch] Warning: Failed to read language directory ${lang}: ${err.message}`);
       continue;
     }
 
     if (batchFiles.length === 0) {
-      console.log(`[Batch] No batch files found for language: ${lang}`);
       continue;
     }
 
-    console.log(`[Batch] Found ${batchFiles.length} batch files for ${lang}`);
+    // Track batches for this language
+    if (verbose) {
+      verboseInfo.batchesPerLanguage[lang] = batchFiles.length;
+      verboseInfo.totalBatches += batchFiles.length;
+    }
 
     // Read all batches for this language
     for (const batchFile of batchFiles) {
       const batchFilePath = join(langDir, batchFile);
-      console.log(`[Batch] Reading ${lang}/${batchFile}`);
 
       try {
-        const records = await readCSV(batchFilePath);
+        const records = await readCSV(batchFilePath, verbose ? verboseInfo : null);
 
         for (const record of records) {
           if (!record.id) continue;
@@ -443,12 +488,15 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
           }
         }
       } catch (err) {
-        console.error(`[Batch] Warning: Failed to read batch ${batchFile}: ${err.message}`);
+        // Skip failed batches
       }
     }
   }
 
-  console.log(`\n[Batch] Total unique records with translations: ${translationsById.size}`);
+  // Track total records
+  if (verbose) {
+    verboseInfo.totalRecords = translationsById.size;
+  }
 
   // Build merged records
   let mergedRecords;
@@ -466,8 +514,6 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
       // Keep original if no translation available
       return originalRecord;
     });
-
-    console.log(`[Batch] Merged ${originalRecords.length} records (${translationsById.size} with translations)`);
   } else {
     // No original file, build records from translations
     mergedRecords = [];
@@ -481,8 +527,6 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
       Object.keys(translations).forEach(col => allColumns.add(col));
     }
     columns = Array.from(allColumns);
-
-    console.log(`[Batch] Built ${mergedRecords.length} records from translations`);
   }
 
   // Ensure all language columns are included in the output
@@ -504,7 +548,9 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
   // Write merged CSV
   await writeCSV(outputFilePath, mergedRecords, columns);
 
-  console.log(`\n[Batch] Merged CSV saved to: ${outputFilePath}`);
+  if (verbose) {
+    return { outputFile: outputFilePath, verboseInfo };
+  }
   return outputFilePath;
 }
 
@@ -513,11 +559,20 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
  * @param {string} csvFilePath - Path to the source CSV file
  * @param {number} batchSize - Number of records per batch
  * @param {string} batchDir - Base directory for batches
- * @param {Object} options - Options (onProgress, onComplete)
- * @returns {Promise<number>} - Number of batches created
+ * @param {Object} options - Options (onProgress, onComplete, verbose)
+ * @returns {Promise<number|Object>} - Number of batches created, or object with verboseInfo if verbose=true
  */
 export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAULT_BATCH_DIR, options = {}) {
-  const { onProgress, onComplete } = options;
+  const { onProgress, onComplete, verbose = false } = options;
+
+  // Initialize verbose info accumulator
+  const verboseInfo = {
+    directoriesCreated: [],
+    filesRead: [],
+    languagesProcessed: [],
+    totalBatches: 0,
+    totalRecords: 0
+  };
 
   // Validate inputs
   if (!csvFilePath) {
@@ -528,11 +583,15 @@ export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAU
   }
 
   // Read the source CSV
-  const records = await readCSV(csvFilePath);
+  const records = await readCSV(csvFilePath, verbose ? verboseInfo : null);
 
   if (records.length === 0) {
-    if (onComplete) onComplete({ batchCount: 0, recordCount: 0 });
-    return 0;
+    const result = { batchCount: 0, recordCount: 0 };
+    if (verbose) {
+      result.verboseInfo = verboseInfo;
+    }
+    if (onComplete) onComplete(result);
+    return verbose ? result : 0;
   }
 
   // Get column headers from first record
@@ -540,7 +599,7 @@ export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAU
 
   // Set up pending directory
   const pendingDir = join(batchDir, PENDING_DIR);
-  await ensureDirectory(pendingDir);
+  await ensureDirectory(pendingDir, verbose ? verboseInfo : null);
 
   // Calculate number of batches
   const numBatches = Math.ceil(records.length / batchSize);
@@ -561,23 +620,46 @@ export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAU
     }
   }
 
-  if (onComplete) {
-    onComplete({ batchCount: numBatches, recordCount: records.length });
+  // Populate verbose info
+  if (verbose) {
+    verboseInfo.totalBatches = numBatches;
+    verboseInfo.totalRecords = records.length;
   }
 
-  return numBatches;
+  const result = { batchCount: numBatches, recordCount: records.length };
+  if (verbose) {
+    result.verboseInfo = verboseInfo;
+  }
+
+  if (onComplete) {
+    onComplete(result);
+  }
+
+  return verbose ? result : numBatches;
 }
 
 /**
  * Cleans up batch directories
  * @param {string} batchDir - Base directory for batches
  * @param {string} mode - Which directories to clean ('pending', 'translated', 'all')
+ * @param {Object} options - Options (verbose)
+ * @returns {Promise<Object|void>} - Object with mode and verboseInfo if verbose=true
  */
-export async function cleanBatches(batchDir = DEFAULT_BATCH_DIR, mode = 'all') {
-  console.log(`[Batch] Cleaning batch directories (mode: ${mode})`);
-  
+export async function cleanBatches(batchDir = DEFAULT_BATCH_DIR, mode = 'all', options = {}) {
+  const { verbose = false } = options;
+
+  // Initialize verbose info accumulator
+  const verboseInfo = {
+    directoriesCreated: [],
+    filesRead: [],
+    languagesProcessed: [],
+    totalBatches: 0,
+    totalRecords: 0,
+    filesCleared: []
+  };
+
   const dirsToClean = [];
-  
+
   if (mode === 'pending' || mode === 'all') {
     dirsToClean.push(join(batchDir, PENDING_DIR));
   }
@@ -593,13 +675,17 @@ export async function cleanBatches(batchDir = DEFAULT_BATCH_DIR, mode = 'all') {
           const filePath = join(dir, file);
           await writeFile(filePath, '', 'utf-8').catch(() => {});
           // Note: We don't delete files, just empty them to be safe
-          console.log(`[Batch] Cleared: ${filePath}`);
+          if (verbose) {
+            verboseInfo.filesCleared.push(filePath);
+          }
         }
       }
     }
   }
-  
-  console.log('[Batch] Cleanup complete');
+
+  if (verbose) {
+    return { mode, verboseInfo };
+  }
 }
 
 export default {
