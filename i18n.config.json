@@ -1,8 +1,40 @@
 {
   "languages": [
-    { "code": "en", "name": "English", "file": "messages.en.xlf" },
-    { "code": "es", "name": "Spanish", "file": "messages.es.xlf" },
-    { "code": "fr", "name": "French", "file": "messages.fr.xlf" }
+    {
+      "code": "en",
+      "name": "English",
+      "file": "messages.en.xlf"
+    },
+    {
+      "code": "da",
+      "name": "Danish (Dansk)",
+      "file": "messages.da.xlf"
+    },
+    {
+      "code": "fr",
+      "name": "French (Français)",
+      "file": "messages.fr.xlf"
+    },
+    {
+      "code": "ja",
+      "name": "Japanese (日本語)",
+      "file": "messages.ja.xlf"
+    },
+    {
+      "code": "ru",
+      "name": "Russian (Русский)",
+      "file": "messages.ru.xlf"
+    },
+    {
+      "code": "es",
+      "name": "Spanish (Español)",
+      "file": "messages.es.xlf"
+    },
+    {
+      "code": "sv",
+      "name": "Swedish (Svenska)",
+      "file": "messages.sv.xlf"
+    }
   ],
   "sourceLanguage": "en",
   "sourceFile": "messages.xlf",
@@ -15,6 +47,6 @@
     "model": "${LLM_MODEL}",
     "batchSize": 50,
     "concurrency": 5,
-    "systemPrompt": "You are a professional translator specializing in software localization. Translate the following CSV content from English to the target language specified. Important rules:\n1. Preserve all interpolations like {{variable}} exactly as they are\n2. Preserve all ICU message format like {count, plural, =0 {...} other {...}}\n3. Preserve all placeholders like <x id=\"...\"/>\n4. Do NOT translate the translation unit IDs\n5. Return ONLY the CSV content, no additional text or explanations\n6. Keep the same CSV format with columns: id,source,note,meaning,target_language"
+    "systemPrompt": "You are a professional translator specializing in software localization.\n\nYour task is to translate Angular i18n messages from one language to another while:\n1. Preserving all placeholders like {0}, {1}, {count}, etc.\n2. Maintaining ICU message format for plurals and selections\n3. Keeping HTML tags and entities intact\n4. Adapting tone and formality to match the target culture\n5. Translating in context, considering this is UI text\n\nProvide only the translation without explanations or additional text."
   }
 }

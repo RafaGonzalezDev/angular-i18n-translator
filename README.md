@@ -163,15 +163,61 @@ angular-i18n-translator/
 
 | Command | Description |
 |---------|-------------|
-| `npm run extract` | Shows the command to extract i18n strings from Angular |
+| `npm run init` | Interactive configuration wizard |
 | `npm run xlf-to-csv` | Converts XLF file to CSV format |
-| `npm run csv-to-xlf` | Converts translated CSV to XLF files per language |
-| `npm run translate:split` | Splits CSV into batches for translation |
-| `npm run translate:run` | Executes translation with LLM (languages in sequence, batches in parallel) |
-| `npm run translate:merge` | Merges translated batches into a final CSV |
-| `npm run translate:all` | Executes the complete translation pipeline |
+| `npm run csv-to-xlf` | Converts translated CSV to XLF files |
+| `npm run translate:run` | Executes translation with LLM |
+| `npm run translate:all` | Complete translation pipeline |
 | `npm run validate` | Validates CSV consistency |
-| `npm run clean` | Cleans all generated files |
+| `npm run clean` | Cleans generated files |
+
+### Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--quiet` | Suppress non-essential output |
+| `--verbose` | Enable verbose output |
+| `--version` | Show version number |
+| `--help` | Show help |
+
+### translate-run Options
+
+| Option | Description |
+|--------|-------------|
+| `-f, --force` | Force re-translation of existing batches |
+
+### Interactive Setup (init)
+
+Run the interactive setup wizard to generate configuration files:
+
+```bash
+npm run init
+```
+
+This will guide you through:
+1. API key configuration
+2. LLM provider selection
+3. Source and target languages
+4. Batch settings (optional)
+
+The wizard creates:
+- `.env` - API credentials
+- `i18n.config.json` - Full configuration
+
+### Enhanced Validation
+
+The `validate` command now provides:
+- Line numbers for each issue
+- Severity levels (ERROR, WARNING, INFO)
+- Suggested fixes
+- Context snippets for interpolation errors
+
+Example output:
+```
+Line 42: [submit.btn] ERROR Missing interpolation: {{count}}
+  Suggestion: Add {{count}} to the translation
+  Context: Source: "Submit {{count}} items" | Translation: "Enviar"
+```
 
 ### Additional Options
 
@@ -180,17 +226,23 @@ angular-i18n-translator/
 npm run translate:run -- --force
 
 # Clean only CSV files
-node src/index.js clean --csv-only
+npm run clean -- --csv-only
 
 # Clean only batch directories
-node src/index.js clean --batches-only
+npm run clean -- --batches-only
 
 # Clean only output directory
-node src/index.js clean --output-only
+npm run clean -- --output-only
 
 # Clean batches and output, keep CSV
-node src/index.js clean --keep-csv
+npm run clean -- --keep-csv
 ```
+
+> **Note**: When passing flags to commands via npm run, use `--` before the flag:
+> ```bash
+> npm run translate:run -- --force
+> npm run clean -- --csv-only
+> ```
 
 ---
 
@@ -488,6 +540,12 @@ ng extract-i18n --output-path . --out-file messages.xlf
 
 | Package | Version | Purpose |
 |---------|---------|---------|
+| `commander` | ^14.0.0 | CLI argument parsing |
+| `chalk` | ^5.6.0 | Terminal colors and styling |
+| `ora` | ^9.0.0 | Spinners for long operations |
+| `cli-progress` | ^3.12.0 | Progress bars |
+| `inquirer` | ^13.0.0 | Interactive prompts |
+| `zod` | ^4.0.0 | Schema validation |
 | `@xmldom/xmldom` | ^0.8.10 | XML parser for XLF files |
 | `csv-parse` | ^5.5.6 | CSV file reading |
 | `csv-stringify` | ^6.5.1 | CSV file writing |

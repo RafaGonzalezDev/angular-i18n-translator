@@ -1,16 +1,23 @@
 {
   "name": "angular-i18n-translator",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Node.js tool for managing Angular i18n translation workflow",
   "type": "module",
   "main": "src/index.js",
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10",
+    "chalk": "^5.6.2",
+    "cli-progress": "^3.12.0",
+    "commander": "^14.0.3",
     "csv-parse": "^5.5.6",
     "csv-stringify": "^6.5.1",
-    "dotenv": "^16.6.1"
+    "dotenv": "^16.6.1",
+    "inquirer": "^13.3.0",
+    "ora": "^9.3.0",
+    "zod": "^4.3.6"
   },
   "scripts": {
+    "init": "node src/index.js init",
     "extract": "node src/index.js extract",
     "xlf-to-csv": "node src/index.js xlf-to-csv",
     "csv-to-xlf": "node src/index.js csv-to-xlf",

@@ -2,6 +2,8 @@ import { readFileSync, existsSync } from 'fs';
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { safeValidateConfig } from './config-schema.js';
+import { ConfigError, ValidationError } from './errors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,7 +24,7 @@ let configLoadError = null;
  * @param {any} value - The value to process (string, object, array, or primitive)
  * @returns {any} - The processed value with env vars replaced
  */
-function replaceEnvVariables(value) {
+export function replaceEnvVariables(value) {
   if (typeof value === 'string') {
     return value.replace(/\$\{(\w+)\}/g, (match, envVarName) => {
       if (process.env[envVarName] === undefined) {
@@ -49,63 +51,40 @@ function replaceEnvVariables(value) {
 }
 
 /**
- * Validates the configuration object
- * @param {Object} config - The configuration object to validate
- * @throws {Error} - Throws descriptive error if validation fails
+ * Validates the configuration object using Zod schema
+ * Reuses safeValidateConfig from config-schema.js to avoid duplication
+ * @param {Object} rawConfig - The configuration object to validate
+ * @throws {ValidationError} - Throws descriptive error if validation fails
+ * @returns {Object} - The validated configuration with defaults applied
  */
-function validateConfig(config) {
-  const requiredFields = ['sourceLanguage', 'languages', 'llm'];
-  const missingFields = requiredFields.filter(field => !(field in config));
+function validateConfig(rawConfig) {
+  const result = safeValidateConfig(rawConfig);
   
-  if (missingFields.length > 0) {
-    throw new Error(
-      `Missing required configuration fields: ${missingFields.join(', ')}\n` +
-      `Please ensure i18n.config.json contains all required fields: ${requiredFields.join(', ')}`
+  if (!result.success) {
+    // Convert Zod errors to user-friendly format
+    const issues = result.error.errors.map(err => ({
+      path: err.path.join('.'),
+      message: err.message,
+    }));
+    
+    throw new ValidationError(
+      `Configuration validation failed:\n${issues.map(i => `  • ${i.path ? `${i.path}: ` : ''}${i.message}`).join('\n')}`,
+      issues
     );
   }
   
-  if (!Array.isArray(config.languages) || config.languages.length === 0) {
-    throw new Error(
-      'Invalid configuration: "languages" must be a non-empty array\n' +
-      'Please provide at least one language in the languages array.'
-    );
-  }
-  
-  const languageCodes = config.languages.map(lang => lang.code);
-  if (!config.sourceLanguage || !languageCodes.includes(config.sourceLanguage)) {
-    throw new Error(
-      `Invalid sourceLanguage: "${config.sourceLanguage}"\n` +
-      `sourceLanguage must be one of the language codes: ${languageCodes.join(', ')}`
-    );
-  }
-  
-  const llmRequiredFields = ['baseURL', 'apiKey', 'model'];
-  const missingLlmFields = llmRequiredFields.filter(field => !(field in config.llm));
-  
-  if (missingLlmFields.length > 0) {
-    throw new Error(
-      `Missing required LLM configuration fields: ${missingLlmFields.join(', ')}\n` +
-      `Please ensure the llm object contains: ${llmRequiredFields.join(', ')}`
-    );
-  }
-  
-  if (!config.llm.apiKey || config.llm.apiKey.trim() === '') {
-    throw new Error(
-      'Invalid LLM configuration: apiKey is empty\n' +
-      'Please provide a valid API key in the llm.apiKey field or set the LLM_API_KEY environment variable.'
-    );
-  }
+  return result.data;
 }
 
 /**
  * Loads and validates the configuration file
- * @throws {Error} - Throws if config file is missing, invalid, or validation fails
+ * @throws {ConfigError|ValidationError} - Throws if config file is missing, invalid, or validation fails
  */
 function doLoadConfig() {
   if (!existsSync(configPath)) {
-    throw new Error(
-      `Configuration file not found: ${configPath}\n` +
-      'Please create an i18n.config.json file in the project root directory.'
+    throw new ConfigError(
+      `Configuration file not found: ${configPath}`,
+      'Create an i18n.config.json file in the project root directory with your translation settings.'
     );
   }
 
@@ -113,9 +92,9 @@ function doLoadConfig() {
   try {
     fileContent = readFileSync(configPath, 'utf-8');
   } catch (error) {
-    throw new Error(
-      `Failed to read configuration file: ${error.message}\n` +
-      'Please check file permissions and path.'
+    throw new ConfigError(
+      `Failed to read configuration file: ${error.message}`,
+      'Check file permissions and ensure the path is correct.'
     );
   }
 
@@ -123,19 +102,19 @@ function doLoadConfig() {
   try {
     rawConfig = JSON.parse(fileContent);
   } catch (error) {
-    throw new Error(
-      `Failed to parse i18n.config.json: ${error.message}\n` +
-      'Please ensure the configuration file contains valid JSON.'
+    throw new ConfigError(
+      `Failed to parse i18n.config.json: ${error.message}`,
+      'Ensure the configuration file contains valid JSON. Use a JSON validator to check for syntax errors.'
     );
   }
 
   // Replace environment variable placeholders
   const processedConfig = replaceEnvVariables(rawConfig);
 
-  // Validate the configuration
-  validateConfig(processedConfig);
+  // Validate the configuration using Zod schema
+  const validatedConfig = validateConfig(processedConfig);
 
-  return processedConfig;
+  return validatedConfig;
 }
 
 /**
@@ -210,6 +189,5 @@ export {
   loadConfig, 
   isConfigLoaded, 
   getLanguageConfig, 
-  getTargetLanguages,
-  replaceEnvVariables 
+  getTargetLanguages
 };

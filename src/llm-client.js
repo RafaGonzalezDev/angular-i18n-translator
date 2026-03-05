@@ -3,9 +3,13 @@
  * Handles communication with OpenAI-compatible LLM APIs for CSV translation
  */
 
+import { APIError } from './errors.js';
+import { getLanguageName } from './languages.js';
+
 const RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff: 1s, 2s, 4s
 const MAX_RETRIES = 3;
-const REQUEST_TIMEOUT = 60000; // 60 seconds timeout
+const DEFAULT_TIMEOUT = 60000; // 60 seconds timeout
+const MAX_ERROR_BODY_LENGTH = 500; // Max characters to show from error body
 
 /**
  * Builds the system prompt for translation
@@ -13,40 +17,72 @@ const REQUEST_TIMEOUT = 60000; // 60 seconds timeout
  * @param {string} customPrompt - Optional custom prompt from config
  * @returns {string} - Complete system prompt
  */
-// Language names mapping for better prompts
-const LANGUAGE_NAMES = {
-  'en': 'English',
-  'es': 'Spanish',
-  'fr': 'French',
-  'de': 'German',
-  'it': 'Italian',
-  'pt': 'Portuguese',
-  'zh': 'Chinese',
-  'ja': 'Japanese',
-  'ko': 'Korean',
-  'ru': 'Russian',
-  'ar': 'Arabic',
-  'nl': 'Dutch',
-  'pl': 'Polish',
-  'tr': 'Turkish',
-  'vi': 'Vietnamese',
-  'th': 'Thai',
-  'sv': 'Swedish',
-  'da': 'Danish',
-  'fi': 'Finnish',
-  'no': 'Norwegian',
-  'cs': 'Czech',
-  'el': 'Greek',
-  'he': 'Hebrew',
-  'id': 'Indonesian',
-  'ms': 'Malay',
-  'ro': 'Romanian',
-  'uk': 'Ukrainian',
-  'hu': 'Hungarian'
-};
+
+/**
+ * Classifies HTTP errors by status code and creates appropriate APIError
+ * @param {number} status - HTTP status code
+ * @param {string} statusText - HTTP status text
+ * @param {string} body - Response body (will be truncated)
+ * @param {Object} options - Additional options
+ * @param {string} [options.retryAfter] - Value of Retry-After header (in seconds)
+ * @returns {APIError} - Classified error with appropriate properties
+ */
+function classifyHttpError(status, statusText, body, options = {}) {
+  const truncatedBody = body ? body.substring(0, MAX_ERROR_BODY_LENGTH) : '';
+  const { retryAfter } = options;
+
+  let message;
+  let retryable;
+  let suggestion;
+
+  switch (status) {
+    case 401:
+      message = 'API key inválida o expirada. Verifica tu archivo .env';
+      retryable = false;
+      suggestion = 'Check your API key in the .env file and ensure it has not expired';
+      break;
+
+    case 402:
+    case 429:
+      message = 'Rate limit o cuota excedida. Espera antes de reintentar';
+      retryable = true;
+      suggestion = retryAfter
+        ? `Wait ${retryAfter} seconds before retrying (from Retry-After header)`
+        : 'Wait a moment before retrying, or reduce request frequency';
+      break;
+
+    case 400:
+      message = 'Solicitud inválida. Revisa el modelo y parámetros';
+      retryable = false;
+      suggestion = truncatedBody
+        ? `Check the request parameters. Response: ${truncatedBody}`
+        : 'Verify the model name and request parameters are correct';
+      break;
+
+    case 500:
+    case 502:
+    case 503:
+    case 504:
+      message = 'Error temporal del servidor. Reintentando...';
+      retryable = true;
+      suggestion = retryAfter
+        ? `Server temporarily unavailable. Wait ${retryAfter} seconds (from Retry-After header)`
+        : 'Server error is usually temporary. The request will be retried automatically';
+      break;
+
+    default:
+      message = `HTTP error ${status}: ${statusText}`;
+      retryable = status >= 500; // Server errors are generally retryable
+      suggestion = truncatedBody
+        ? `Response body: ${truncatedBody}`
+        : 'Check your network connection and API configuration';
+  }
+
+  return new APIError(message, { statusCode: status, retryable, suggestion });
+}
 
 function buildSystemPrompt(targetLanguage, customPrompt) {
-  const languageName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
+  const languageName = getLanguageName(targetLanguage);
   
   const basePrompt = customPrompt || `You are a professional translator specializing in software localization. Your task is to translate CSV content from English to ${languageName} (${targetLanguage}).
 
@@ -115,19 +151,40 @@ function extractCSVContent(responseText) {
  * @param {string} csvContent - CSV content to translate
  * @param {string} targetLanguage - Target language code
  * @param {Object} config - LLM configuration (baseURL, model, apiKey, systemPrompt)
- * @param {Object} options - Options (force, onProgress, currentBatch, totalBatches)
+ * @param {Object} options - Options (force, onProgress, currentBatch, totalBatches, timeout)
  * @returns {Promise<string>} - Translated CSV content
  */
 async function translateBatch(csvContent, targetLanguage, config, options = {}) {
-  const { force = false, onProgress, currentBatch = 1, totalBatches = 1 } = options;
+  const {
+    force = false,
+    onProgress,
+    currentBatch = 1,
+    totalBatches = 1,
+    timeout = DEFAULT_TIMEOUT
+  } = options;
 
   const { baseURL, model, apiKey, systemPrompt } = config;
 
-  // Log progress
+  // Progress tracking for ETA calculation
+  const startTime = Date.now();
+  const batchTimes = [];
+
+  // Log progress with enhanced information
   const logProgress = (status) => {
-    console.log(`[LLM] Batch ${currentBatch}/${totalBatches}: ${status}`);
+    const elapsedTime = Date.now() - startTime;
+
+    // Calculate simple ETA based on average batch time
+    let eta = null;
+    if (batchTimes.length > 0 && currentBatch < totalBatches) {
+      const avgBatchTime = batchTimes.reduce((a, b) => a + b, 0) / batchTimes.length;
+      const remainingBatches = totalBatches - currentBatch;
+      eta = Math.round(avgBatchTime * remainingBatches);
+    }
+
+    console.log(`[LLM] Batch ${currentBatch}/${totalBatches}: ${status} (${elapsedTime}ms elapsed${eta ? `, ETA: ${eta}ms` : ''})`);
+
     if (onProgress) {
-      onProgress(currentBatch, totalBatches, status);
+      onProgress(currentBatch, totalBatches, status, { startTime, elapsedTime, eta });
     }
   };
 
@@ -155,12 +212,13 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
     try {
       logProgress(`Attempt ${attempt + 1}/${MAX_RETRIES + 1}...`);
 
-      const response = await makeRequestWithTimeout(baseURL, apiKey, requestBody, REQUEST_TIMEOUT);
+      const response = await makeRequestWithTimeout(baseURL, apiKey, requestBody, timeout);
 
       // Check for HTTP errors
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`API error ${response.status}: ${response.statusText} - ${errorBody}`);
+        const retryAfter = response.headers.get('Retry-After');
+        throw classifyHttpError(response.status, response.statusText, errorBody, { retryAfter });
       }
 
       // Parse JSON response
@@ -169,22 +227,34 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
         const responseText = await response.text();
         data = JSON.parse(responseText);
       } catch (parseError) {
-        throw new Error(`Invalid JSON response from API: ${parseError.message}`);
+        throw new APIError(`Invalid JSON response from API: ${parseError.message}`, {
+          retryable: false,
+          suggestion: 'The API returned malformed JSON. Check the API endpoint.'
+        });
       }
 
       // Extract content from response
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Invalid response structure: missing choices or message');
+        throw new APIError('Invalid response structure: missing choices or message', {
+          retryable: false,
+          suggestion: 'The API response format is unexpected. Verify the API compatibility.'
+        });
       }
 
       const content = data.choices[0].message.content;
 
       if (!content) {
-        throw new Error('Empty response content from API');
+        throw new APIError('Empty response content from API', {
+          retryable: false,
+          suggestion: 'The API returned an empty response. Try with different content.'
+        });
       }
 
       // Extract CSV from response
       const translatedCSV = extractCSVContent(content);
+
+      // Record batch time for ETA calculation
+      batchTimes.push(Date.now() - startTime);
 
       logProgress('Translation completed successfully');
       return translatedCSV;
@@ -194,7 +264,20 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
       const isRetryable = isErrorRetryable(error);
 
       if (attempt < MAX_RETRIES && isRetryable) {
-        const delay = RETRY_DELAYS[attempt];
+        // Calculate delay with jitter: base * (0.5 + random)
+        const baseDelay = RETRY_DELAYS[attempt];
+        const jitter = 0.5 + Math.random(); // Random between 0.5 and 1.5
+        let delay = Math.round(baseDelay * jitter);
+
+        // Respect Retry-After header if present (in seconds)
+        if (error instanceof APIError) {
+          const retryAfterMatch = error.suggestion?.match(/Wait (\d+) seconds/);
+          if (retryAfterMatch) {
+            const retryAfterMs = parseInt(retryAfterMatch[1], 10) * 1000;
+            delay = Math.max(delay, retryAfterMs);
+          }
+        }
+
         console.log(`[LLM] Retryable error: ${error.message}. Waiting ${delay}ms before retry...`);
         await sleep(delay);
       } else {
@@ -248,6 +331,11 @@ async function makeRequestWithTimeout(baseURL, apiKey, body, timeout) {
  * @returns {boolean} - True if the error is retryable
  */
 function isErrorRetryable(error) {
+  // Check if it's an APIError with retryable property
+  if (error instanceof APIError) {
+    return error.retryable;
+  }
+
   const message = error.message.toLowerCase();
 
   // Network errors
@@ -292,8 +380,10 @@ export {
   buildSystemPrompt,
   extractCSVContent,
   makeRequestWithTimeout,
+  classifyHttpError,
   isErrorRetryable,
   RETRY_DELAYS,
   MAX_RETRIES,
-  REQUEST_TIMEOUT
+  DEFAULT_TIMEOUT,
+  MAX_ERROR_BODY_LENGTH
 };
