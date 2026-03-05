@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-03-05
+
+### Added
+- **Individual language spinners** - Replaced cli-progress MultiBar with ora spinners per language in parallel translation
+- **Information accumulation system** - batch-manager.js accumulates operations internally and reports summary at the end when verbose mode is active
+- **Grouped verbose output** - Logs organized by category instead of per-operation (e.g., "Created 5 directories: fi, fr, de, ko, es")
+- **Sobria color palette** - Professional and understated colors for verbose mode
+
+### Changed
+- **Reduced verbosity in normal mode** - Removed all [Batch] prefixed logs, replaced with minimal spinners
+- **Simplified verbose mode** - Grouped logs by category with summarized reporting
+- **Improved parallel translation UX** - Clear per-language status messages with individual spinners
+
+### Fixed
+- **Promise.allSettled results handling** - Fixed bug in processing settled promise results
+- **Spinner initialization race condition** - Fixed race condition during parallel spinner setup
+- **Spinner visual corruption in parallel translation** - Replaced multiple concurrent spinners with single global spinner
+  - Eliminated visual artifacts caused by cursor manipulation conflicts
+  - Simplified UI to show one spinner for all languages: "Translating N languages..."
+  - Status now tracked internally and shown in final report only
+
+### Removed
+- **cli-progress dependency** - Removed cli-progress MultiBar in favor of individual ora spinners
+- **Verbose [Batch] logs** - Eliminated per-operation batch logging in normal mode
+
+---
+
 ## [1.1.0] - 2026-03-05
 
 ### Added
