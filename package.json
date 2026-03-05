@@ -11,14 +11,19 @@
     "dotenv": "^16.6.1"
   },
   "scripts": {
+    "cli": "node src/index.js",
     "extract": "node src/index.js extract",
     "xlf-to-csv": "node src/index.js xlf-to-csv",
     "csv-to-xlf": "node src/index.js csv-to-xlf",
+    "translate": "node src/index.js translate run",
     "translate:split": "node src/index.js translate-split",
     "translate:run": "node src/index.js translate-run",
     "translate:merge": "node src/index.js translate-merge",
     "translate:all": "node src/index.js translate-all",
     "validate": "node src/index.js validate",
-    "clean": "node src/index.js clean"
+    "doctor": "node src/index.js doctor",
+    "init": "node src/index.js init",
+    "clean": "node src/index.js clean",
+    "test": "node --test"
   }
 }

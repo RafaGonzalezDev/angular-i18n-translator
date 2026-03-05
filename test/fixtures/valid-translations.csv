@@ -1,0 +1,3 @@
+id,source,note,meaning,es,fr
+home.title,"Welcome {{name}}",,,"Bienvenido {{name}}","Bienvenue {{name}}"
+home.count,"{count, plural, =0 {No items} other {# items}}",,,"{count, plural, =0 {Sin elementos} other {# elementos}}","{count, plural, =0 {Aucun élément} other {# éléments}}"
