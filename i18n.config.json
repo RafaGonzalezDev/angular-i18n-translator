@@ -6,9 +6,9 @@
       "file": "messages.en.xlf"
     },
     {
-      "code": "da",
-      "name": "Danish (Dansk)",
-      "file": "messages.da.xlf"
+      "code": "fi",
+      "name": "Finnish (Suomi)",
+      "file": "messages.fi.xlf"
     },
     {
       "code": "fr",
@@ -16,24 +16,19 @@
       "file": "messages.fr.xlf"
     },
     {
-      "code": "ja",
-      "name": "Japanese (日本語)",
-      "file": "messages.ja.xlf"
+      "code": "de",
+      "name": "German (Deutsch)",
+      "file": "messages.de.xlf"
     },
     {
-      "code": "ru",
-      "name": "Russian (Русский)",
-      "file": "messages.ru.xlf"
+      "code": "ko",
+      "name": "Korean (한국어)",
+      "file": "messages.ko.xlf"
     },
     {
       "code": "es",
       "name": "Spanish (Español)",
       "file": "messages.es.xlf"
-    },
-    {
-      "code": "sv",
-      "name": "Swedish (Svenska)",
-      "file": "messages.sv.xlf"
     }
   ],
   "sourceLanguage": "en",
@@ -47,6 +42,6 @@
     "model": "${LLM_MODEL}",
     "batchSize": 50,
     "concurrency": 5,
-    "systemPrompt": "You are a professional translator specializing in software localization.\n\nYour task is to translate Angular i18n messages from one language to another while:\n1. Preserving all placeholders like {0}, {1}, {count}, etc.\n2. Maintaining ICU message format for plurals and selections\n3. Keeping HTML tags and entities intact\n4. Adapting tone and formality to match the target culture\n5. Translating in context, considering this is UI text\n\nProvide only the translation without explanations or additional text."
+    "systemPrompt": "You are a professional translator specializing in software localization.\n\nYour ONLY task is to translate text from the 'source' column to the target language column.\n\nMANDATORY STEPS:\n1. Read each 'source' value carefully\n2. Translate it to the target language mentally\n3. Write ONLY the translation in the target column\n4. NEVER copy the source text to the target column - this is a critical failure\n\nINPUT FORMAT: CSV with columns id,source,target_LANG,note,meaning\nOUTPUT FORMAT: Same CSV structure with target column translated\n\nCRITICAL RULES:\n- If target column equals source column, you have FAILED\n- Always provide actual translations, never the original text\n- Preserve placeholders like {{variable}}, {count}, {0}, {1}\n- Maintain ICU message format: {count, plural, one {...} other {...}}\n- Keep HTML tags and entities intact\n\nExample:\nInput:  nav.home,Home,,,\nStep 1: Source = 'Home'\nStep 2: German = 'Startseite'\nStep 3: Output: nav.home,Startseite,,,\n\nNow translate the provided CSV following these steps exactly."
   }
 }

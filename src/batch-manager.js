@@ -105,7 +105,9 @@ async function processSingleBatch(batchFile, batchIndex, totalBatches, pendingDi
   const batchFilePath = join(pendingDir, batchFile);
   const translatedFilePath = join(translatedDir, batchFile);
 
-  console.log(`\n[Batch] Processing batch ${batchNumber}/${totalBatches}: ${batchFile}`);
+  if (onProgress) {
+    onProgress(batchNumber, totalBatches, 'processing');
+  }
 
   try {
     // Read from translated if it exists (to preserve previous language translations)
@@ -113,7 +115,6 @@ async function processSingleBatch(batchFile, batchIndex, totalBatches, pendingDi
     const sourceFilePath = existsSync(translatedFilePath) 
       ? translatedFilePath 
       : batchFilePath;
-    console.log(`[Batch] Reading from: ${sourceFilePath === translatedFilePath ? 'translated' : 'pending'}`);
     const records = await readCSV(sourceFilePath);
     
     // Extract only the columns needed for translation: id, source, note, meaning, and targetLanguage
@@ -164,9 +165,7 @@ async function processSingleBatch(batchFile, batchIndex, totalBatches, pendingDi
     
     // Write translated batch (with all columns preserved)
     await writeCSV(translatedFilePath, records, columns);
-    
-    console.log(`[Batch] Successfully translated and saved: ${batchFile}`);
-    
+
     if (onProgress) {
       onProgress(batchNumber, totalBatches, 'completed');
     }
@@ -174,10 +173,8 @@ async function processSingleBatch(batchFile, batchIndex, totalBatches, pendingDi
     return { status: 'success', batch: batchFile };
 
   } catch (err) {
-    console.error(`[Batch] Failed to process batch ${batchFile}: ${err.message}`);
-    
     if (onProgress) {
-      onProgress(batchNumber, totalBatches, 'failed');
+      onProgress(batchNumber, totalBatches, 'failed', err.message);
     }
 
     return { status: 'failed', batch: batchFile, error: err.message };
@@ -206,18 +203,16 @@ async function processBatchesInParallel(batchFiles, pendingDir, translatedDir, t
     const chunk = batchFiles.slice(chunkStart, chunkEnd);
     const chunkNumber = Math.floor(chunkStart / concurrency) + 1;
     const totalChunks = Math.ceil(totalBatches / concurrency);
-    
-    console.log(`\n[Batch] Processing chunk ${chunkNumber}/${totalChunks} (batches ${chunkStart + 1}-${chunkEnd} of ${totalBatches}) with concurrency ${concurrency}`);
-    
+
     // Create promises for all batches in this chunk
     const chunkPromises = chunk.map((batchFile, indexInChunk) => {
       const batchIndex = chunkStart + indexInChunk;
       return processSingleBatch(batchFile, batchIndex, totalBatches, pendingDir, translatedDir, targetLanguage, config, options);
     });
-    
+
     // Wait for all batches in chunk to complete (using allSettled so failures don't stop others)
     const results = await Promise.allSettled(chunkPromises);
-    
+
     // Process results
     for (const result of results) {
       if (result.status === 'fulfilled') {
@@ -236,9 +231,6 @@ async function processBatchesInParallel(batchFiles, pendingDir, translatedDir, t
         summary.errors.push({ batch: 'unknown', error: result.reason?.message || 'Unknown error' });
       }
     }
-    
-    // Log progress after each chunk
-    console.log(`[Batch] Chunk ${chunkNumber}/${totalChunks} complete. Progress: ${summary.processed} processed, ${summary.failed} failed`);
   }
   
   return summary;
@@ -253,12 +245,22 @@ async function processBatchesInParallel(batchFiles, pendingDir, translatedDir, t
  * @returns {Promise<Object>} - Summary { processed, skipped, failed, errors: [] }
  */
 export async function runBatches(batchDir, targetLanguage, config, options = {}) {
-  const { force = false, onProgress, concurrency = DEFAULT_CONCURRENCY } = options;
+  const { 
+    force = false, 
+    onProgress, 
+    onStart,
+    onComplete, 
+    onError,
+    concurrency = DEFAULT_CONCURRENCY 
+  } = options;
   
-  console.log(`[Batch] Starting batch processing`);
-  console.log(`[Batch] Target language: ${targetLanguage}`);
-  console.log(`[Batch] Force mode: ${force}`);
-  console.log(`[Batch] Concurrency: ${concurrency}`);
+  if (onStart) {
+    onStart({ 
+      language: targetLanguage, 
+      force, 
+      concurrency 
+    });
+  }
 
   // Validate inputs
   if (!batchDir) {
@@ -280,8 +282,9 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
 
   // Check if pending directory exists
   if (!existsSync(pendingDir)) {
-    console.log(`[Batch] No pending batches directory found: ${pendingDir}`);
-    return { processed: 0, skipped: 0, failed: 0, errors: [] };
+    const summary = { processed: 0, skipped: 0, failed: 0, errors: [], batchCount: 0 };
+    if (onComplete) onComplete(summary);
+    return summary;
   }
 
   // Get all pending batch files
@@ -298,11 +301,10 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
   );
 
   if (batchFiles.length === 0) {
-    console.log('[Batch] No pending batch files found');
-    return { processed: 0, skipped: 0, failed: 0, errors: [] };
+    const summary = { processed: 0, skipped: 0, failed: 0, errors: [], batchCount: 0 };
+    if (onComplete) onComplete(summary);
+    return summary;
   }
-
-  console.log(`[Batch] Found ${batchFiles.length} batch files to process`);
 
   // Process batches in parallel
   const summary = await processBatchesInParallel(
@@ -314,15 +316,20 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
     { force, onProgress, concurrency }
   );
 
-  // Print error summary if there were failures
-  if (summary.errors.length > 0) {
-    console.log(`\n[Batch] Error Summary:`);
+  // Add batch count to summary
+  summary.batchCount = batchFiles.length;
+
+  // Report errors through callback if provided
+  if (summary.errors.length > 0 && onError) {
     for (const { batch, error } of summary.errors) {
-      console.log(`  - ${batch}: ${error}`);
+      onError({ batch, error, language: targetLanguage });
     }
   }
 
-  console.log(`\n[Batch] Processing complete: ${summary.processed} processed, ${summary.skipped} skipped, ${summary.failed} failed`);
+  if (onComplete) {
+    onComplete(summary);
+  }
+
   return summary;
 }
 
@@ -506,13 +513,11 @@ export async function mergeBatches(csvFilePath, batchDir = DEFAULT_BATCH_DIR) {
  * @param {string} csvFilePath - Path to the source CSV file
  * @param {number} batchSize - Number of records per batch
  * @param {string} batchDir - Base directory for batches
+ * @param {Object} options - Options (onProgress, onComplete)
  * @returns {Promise<number>} - Number of batches created
  */
-export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAULT_BATCH_DIR) {
-  console.log(`[Batch] Splitting CSV into batches`);
-  console.log(`[Batch] Source: ${csvFilePath}`);
-  console.log(`[Batch] Batch size: ${batchSize}`);
-  console.log(`[Batch] Output directory: ${batchDir}`);
+export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAULT_BATCH_DIR, options = {}) {
+  const { onProgress, onComplete } = options;
 
   // Validate inputs
   if (!csvFilePath) {
@@ -524,39 +529,42 @@ export async function splitBatches(csvFilePath, batchSize = 50, batchDir = DEFAU
 
   // Read the source CSV
   const records = await readCSV(csvFilePath);
-  
+
   if (records.length === 0) {
-    console.log('[Batch] No records found in CSV');
+    if (onComplete) onComplete({ batchCount: 0, recordCount: 0 });
     return 0;
   }
 
-  console.log(`[Batch] Found ${records.length} records`);
-
   // Get column headers from first record
   const columns = Object.keys(records[0]);
-  
+
   // Set up pending directory
   const pendingDir = join(batchDir, PENDING_DIR);
   await ensureDirectory(pendingDir);
 
   // Calculate number of batches
   const numBatches = Math.ceil(records.length / batchSize);
-  console.log(`[Batch] Creating ${numBatches} batches`);
 
   // Split and write batches
   for (let i = 0; i < numBatches; i++) {
     const start = i * batchSize;
     const end = Math.min(start + batchSize, records.length);
     const batchRecords = records.slice(start, end);
-    
+
     const batchFileName = `batch-${i + 1}.csv`;
     const batchFilePath = join(pendingDir, batchFileName);
-    
+
     await writeCSV(batchFilePath, batchRecords, columns);
-    console.log(`[Batch] Created: ${batchFileName} (${batchRecords.length} records)`);
+
+    if (onProgress) {
+      onProgress(i + 1, numBatches, batchRecords.length);
+    }
   }
 
-  console.log(`[Batch] Split complete: ${numBatches} batches created`);
+  if (onComplete) {
+    onComplete({ batchCount: numBatches, recordCount: records.length });
+  }
+
   return numBatches;
 }
 

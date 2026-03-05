@@ -147,11 +147,88 @@ function extractCSVContent(responseText) {
 }
 
 /**
+ * Validates that the translation was performed by comparing source and target columns
+ * @param {string} sourceCSV - Original CSV content
+ * @param {string} translatedCSV - Translated CSV content
+ * @param {string} targetLanguage - Target language code
+ * @returns {Object} - { isValid: boolean, reason?: string, untranslatedCount?: number }
+ */
+function validateTranslation(sourceCSV, translatedCSV, targetLanguage) {
+  const parseCSV = (csv) => {
+    const lines = csv.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    const sourceIndex = headers.indexOf('source');
+    const targetIndex = headers.indexOf(targetLanguage) || headers.findIndex(h => h.startsWith('target_'));
+    
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return null;
+    }
+    
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(',');
+      if (parts.length > Math.max(sourceIndex, targetIndex)) {
+        rows.push({
+          source: parts[sourceIndex]?.trim() || '',
+          target: parts[targetIndex]?.trim() || ''
+        });
+      }
+    }
+    return { headers, rows };
+  };
+  
+  const sourceData = parseCSV(sourceCSV);
+  const translatedData = parseCSV(translatedCSV);
+  
+  if (!sourceData || !translatedData) {
+    return { isValid: false, reason: 'Could not parse CSV for validation' };
+  }
+  
+  if (sourceData.rows.length !== translatedData.rows.length) {
+    return { isValid: false, reason: `Row count mismatch: ${sourceData.rows.length} vs ${translatedData.rows.length}` };
+  }
+  
+  let identicalCount = 0;
+  let totalTranslatable = 0;
+  
+  for (let i = 0; i < sourceData.rows.length; i++) {
+    const sourceText = sourceData.rows[i].source;
+    const targetText = translatedData.rows[i].target;
+    
+    // Skip empty sources or sources that are just placeholders
+    if (!sourceText || sourceText.trim() === '' || /^[\s{<\[\(]+$/.test(sourceText)) {
+      continue;
+    }
+    
+    totalTranslatable++;
+    
+    // Compare normalized versions (case-insensitive, trimmed)
+    if (sourceText.trim().toLowerCase() === targetText.trim().toLowerCase()) {
+      identicalCount++;
+    }
+  }
+  
+  // If more than 90% are identical, likely no translation occurred
+  if (totalTranslatable > 0) {
+    const identicalPercentage = (identicalCount / totalTranslatable) * 100;
+    if (identicalPercentage > 90) {
+      return { 
+        isValid: false, 
+        reason: `No translation detected: ${identicalCount}/${totalTranslatable} (${identicalPercentage.toFixed(1)}%) entries are identical to source`,
+        untranslatedCount: identicalCount
+      };
+    }
+  }
+  
+  return { isValid: true };
+}
+
+/**
  * Sends a request to the LLM API with exponential backoff retry
  * @param {string} csvContent - CSV content to translate
  * @param {string} targetLanguage - Target language code
  * @param {Object} config - LLM configuration (baseURL, model, apiKey, systemPrompt)
- * @param {Object} options - Options (force, onProgress, currentBatch, totalBatches, timeout)
+ * @param {Object} options - Options (force, onProgress, currentBatch, totalBatches, timeout, verbose)
  * @returns {Promise<string>} - Translated CSV content
  */
 async function translateBatch(csvContent, targetLanguage, config, options = {}) {
@@ -160,7 +237,8 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
     onProgress,
     currentBatch = 1,
     totalBatches = 1,
-    timeout = DEFAULT_TIMEOUT
+    timeout = DEFAULT_TIMEOUT,
+    verbose = false
   } = options;
 
   const { baseURL, model, apiKey, systemPrompt } = config;
@@ -181,14 +259,18 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
       eta = Math.round(avgBatchTime * remainingBatches);
     }
 
-    console.log(`[LLM] Batch ${currentBatch}/${totalBatches}: ${status} (${elapsedTime}ms elapsed${eta ? `, ETA: ${eta}ms` : ''})`);
+    if (options.verbose) {
+      console.log(`[LLM] Batch ${currentBatch}/${totalBatches}: ${status} (${elapsedTime}ms elapsed${eta ? `, ETA: ${eta}ms` : ''})`);
+    }
 
     if (onProgress) {
       onProgress(currentBatch, totalBatches, status, { startTime, elapsedTime, eta });
     }
   };
 
-  logProgress('Starting translation...');
+  if (options.verbose) {
+    logProgress('Starting translation...');
+  }
 
   // Build the user prompt with CSV content
   const userPrompt = `Translate the following CSV content to ${targetLanguage}:\n\n${csvContent}`;
@@ -210,7 +292,9 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      logProgress(`Attempt ${attempt + 1}/${MAX_RETRIES + 1}...`);
+      if (options.verbose) {
+        logProgress(`Attempt ${attempt + 1}/${MAX_RETRIES + 1}...`);
+      }
 
       const response = await makeRequestWithTimeout(baseURL, apiKey, requestBody, timeout);
 
@@ -253,6 +337,15 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
       // Extract CSV from response
       const translatedCSV = extractCSVContent(content);
 
+      // Validate that translation actually occurred
+      const validation = validateTranslation(csvContent, translatedCSV, targetLanguage);
+      if (!validation.isValid) {
+        throw new APIError(`Translation validation failed: ${validation.reason}`, {
+          retryable: true,
+          suggestion: 'The model returned source text instead of translation. Will retry with stronger instructions.'
+        });
+      }
+
       // Record batch time for ETA calculation
       batchTimes.push(Date.now() - startTime);
 
@@ -278,17 +371,23 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
           }
         }
 
-        console.log(`[LLM] Retryable error: ${error.message}. Waiting ${delay}ms before retry...`);
+        if (verbose) {
+          console.log(`[LLM] Retryable error: ${error.message}. Waiting ${delay}ms before retry...`);
+        }
         await sleep(delay);
       } else {
-        logProgress(`Failed: ${error.message}`);
+        if (verbose) {
+          logProgress(`Failed: ${error.message}`);
+        }
         throw error;
       }
     }
   }
 
   // This should never be reached, but just in case
-  logProgress(`Failed after ${MAX_RETRIES + 1} attempts`);
+  if (verbose) {
+    logProgress(`Failed after ${MAX_RETRIES + 1} attempts`);
+  }
   throw lastError;
 }
 
@@ -379,6 +478,7 @@ export {
   translateBatch,
   buildSystemPrompt,
   extractCSVContent,
+  validateTranslation,
   makeRequestWithTimeout,
   classifyHttpError,
   isErrorRetryable,

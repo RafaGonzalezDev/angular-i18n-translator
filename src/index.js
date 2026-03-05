@@ -257,7 +257,7 @@ async function handleTranslateSplit() {
 }
 
 /**
- * Handle translate-run command with spinners
+ * Handle translate-run command with progress bars
  */
 async function handleTranslateRun(options = {}) {
   const { force = false } = options;
@@ -301,45 +301,69 @@ async function handleTranslateRun(options = {}) {
   }
   
   const concurrency = config.config.llm?.concurrency || 5;
+  const verbose = globalOptions.verbose;
   
   log(`Processing ${colors.number(targetLanguages.length)} languages with concurrency: ${colors.number(concurrency)}`);
   log(`Languages: ${targetLanguages.map(l => colors.highlight(l)).join(', ')}`);
   console.log();
   
-  // Create a spinner for each language
-  const spinners = {};
-  targetLanguages.forEach(lang => {
-    spinners[lang] = createSpinner(`Translating ${colors.highlight(lang)} - Waiting...`);
-    spinners[lang].start();
-  });
+  // Create a MultiBar para mostrar progreso de todos los idiomas
+  const multibar = createMultiBar();
+  const bars = {};
 
-  // Process all languages in parallel
   const languagePromises = targetLanguages.map(async (lang) => {
+    // Crear barra para este idioma
+    bars[lang] = multibar.create(100, 0, { 
+      language: lang,
+      status: 'waiting'
+    });
+
     try {
       const summary = await runBatches(batchDir, lang, llmConfig, { 
         force, 
         concurrency,
-        onProgress: (batchNumber, totalBatches, status) => {
-          const progress = `${colors.number(batchNumber)}/${colors.number(totalBatches)}`;
-          spinners[lang].text = `Translating ${colors.highlight(lang)} [${progress} batches]`;
+        verbose,
+        onStart: (info) => {
+          bars[lang].update(0, { 
+            language: lang,
+            status: 'starting'
+          });
+        },
+        onProgress: (batchNumber, totalBatches) => {
+          const percentage = (batchNumber / totalBatches) * 100;
+          bars[lang].update(percentage, {
+            language: lang,
+            status: `${batchNumber}/${totalBatches}`
+          });
+        },
+        onComplete: (summary) => {
+          bars[lang].update(100, {
+            language: lang,
+            status: 'done'
+          });
+          bars[lang].stop();
+        },
+        onError: (error) => {
+          bars[lang].update(0, {
+            language: lang,
+            status: 'failed'
+          });
         }
       });
       
-      spinners[lang].succeed(`${colors.highlight(lang)} completed ` +
-          `(processed=${colors.number(summary.processed)}, ` +
-          `skipped=${colors.number(summary.skipped)}, ` +
-          `failed=${colors.number(summary.failed)})`);
-      
       return { lang, status: 'fulfilled', value: summary };
     } catch (err) {
-      spinners[lang].fail(`${colors.highlight(lang)} failed: ${err.message}`);
+      bars[lang].update(0, {
+        language: lang,
+        status: 'failed'
+      });
       return { lang, status: 'rejected', reason: err };
     }
   });
 
-  // Wait for all languages to complete
   const results = await Promise.allSettled(languagePromises);
-
+  multibar.stop();
+  
   // Convert results from Promise.allSettled to the expected format
   const formattedResults = results.map(result => {
     if (result.status === 'fulfilled') {
