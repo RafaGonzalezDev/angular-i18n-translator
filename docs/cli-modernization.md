@@ -33,12 +33,13 @@ The CLI was redesigned around a layered architecture:
 
 ### Commands
 
-- `node src/index.js translate run [--dry-run] [--resume] [--overwrite] [--json]`
-- `node src/index.js translate step <xlf-to-csv|split|run|merge|csv-to-xlf> [--dry-run] [--json]`
-- `node src/index.js doctor [--json]`
-- `node src/index.js init`
-- `node src/index.js validate [--json]`
-- `node src/index.js clean [--csv-only|--batches-only|--output-only|--keep-csv]`
+- `npm run translate`
+- `npm run cli -- translate run [--dry-run] [--resume] [--overwrite] [--json]`
+- `npm run cli -- translate step <xlf-to-csv|split|run|merge|csv-to-xlf> [--dry-run] [--json]`
+- `npm run doctor [-- --json]`
+- `npm run init`
+- `npm run validate [-- --json]`
+- `npm run clean [-- --csv-only|--batches-only|--output-only|--keep-csv]`
 
 ### Exit codes
 
@@ -52,3 +53,8 @@ The CLI was redesigned around a layered architecture:
 
 - Human mode (default): short action-oriented logs + summary.
 - JSON mode (`--json`): event log + summary for CI integrations.
+
+## Maintenance notes
+
+- Legacy `src/config.js` was removed after introducing `ConfigService` in `src/services/config-service.js`.
+- Keep command examples npm-first to avoid coupling docs to file entrypoint paths.

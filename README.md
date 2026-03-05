@@ -14,25 +14,25 @@ npm run doctor
 
 ```bash
 # Full pipeline
-node src/index.js translate run
+npm run translate
 
 # Plan-only execution (no writes)
-node src/index.js translate run --dry-run
+npm run cli -- translate run --dry-run
 
 # Run one step
-node src/index.js translate step xlf-to-csv
-node src/index.js translate step split
-node src/index.js translate step run --resume
-node src/index.js translate step merge
-node src/index.js translate step csv-to-xlf
+npm run cli -- translate step xlf-to-csv
+npm run cli -- translate step split
+npm run cli -- translate step run --resume
+npm run cli -- translate step merge
+npm run cli -- translate step csv-to-xlf
 ```
 
 ## Setup and diagnostics
 
 ```bash
-node src/index.js init
-node src/index.js doctor
-node src/index.js doctor --json
+npm run init
+npm run doctor
+npm run doctor -- --json
 ```
 
 `doctor` validates:
@@ -44,9 +44,9 @@ node src/index.js doctor --json
 ## Other commands
 
 ```bash
-node src/index.js validate
-node src/index.js clean
-node src/index.js extract
+npm run validate
+npm run clean
+npm run extract
 ```
 
 ## Global flags
