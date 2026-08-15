@@ -97,7 +97,8 @@ IMPORTANT INSTRUCTIONS:
 6. Return ONLY the CSV content, no additional text or explanations
 7. Keep the exact same CSV format with columns: id,source,note,meaning,${targetLanguage}
 8. The ${targetLanguage} column currently contains the source text as a placeholder - replace it with the ${languageName} translation
-9. Return EVERY row with the same ids and in the same order; never drop or reorder rows`;
+9. Return EVERY row with the same ids and in the same order; never drop or reorder rows
+10. Output the raw CSV text starting directly with the header line: do NOT wrap it in quotes or code fences`;
 
   return basePrompt;
 }
@@ -119,10 +120,12 @@ function extractCSVContent(responseText) {
     return codeBlockMatch[1].trim();
   }
 
-  // Try to find CSV content between triple quotes
-  const tripleQuoteMatch = responseText.match(/"""([\s\S]*?)"""/);
-  if (tripleQuoteMatch) {
-    return tripleQuoteMatch[1].trim();
+  // Some models wrap the entire CSV in one pair of double quotes:
+  //   "id,source,...\n..."
+  // Detect the known header shape and unwrap it.
+  const trimmedResponse = responseText.trim();
+  if (/^"id,/.test(trimmedResponse) && trimmedResponse.endsWith('"')) {
+    return trimmedResponse.slice(1, -1).trim();
   }
 
   // Check if the entire response looks like CSV (starts with id or has comma-separated first line)

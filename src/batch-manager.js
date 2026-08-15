@@ -82,7 +82,10 @@ async function writeCSV(filePath, records, columns) {
       if (err) {
         reject(new Error(`Failed to stringify CSV: ${err.message}`));
       } else {
-        writeFile(filePath, output, 'utf-8')
+        // Create the parent directory lazily here: a directory that exists
+        // without any translated file would mislead the merge step.
+        ensureDirectory(dirname(filePath))
+          .then(() => writeFile(filePath, output, 'utf-8'))
           .then(() => resolve())
           .catch(reject);
       }
@@ -301,7 +304,9 @@ export async function runBatches(batchDir, targetLanguage, config, options = {})
   const pendingDir = join(batchDir, PENDING_DIR);
   const translatedDir = join(batchDir, TRANSLATED_DIR, targetLanguage);
 
-  await ensureDirectory(translatedDir);
+  // Note: the translated directory is created lazily by writeCSV when the
+  // first batch succeeds. Creating it up front would make a fully failed run
+  // look like a successful one to the merge step.
 
   const emptySummary = { processed: 0, skipped: 0, failed: 0, errors: [], batchCount: 0 };
 
@@ -362,8 +367,10 @@ export async function mergeBatches(csvFilePath, batchDir, options = {}) {
 
   if (!existsSync(translatedBaseDir)) {
     throw new Error(
-      `Translated batches directory not found: ${translatedBaseDir}. ` +
-      `Run translate-run first.`
+      `No translated batches found (${translatedBaseDir} does not exist). ` +
+      `Nothing has been translated yet: run "npm run translate:run" first. ` +
+      `If that step failed, fix its error (often an invalid API key or rate limit) and retry. ` +
+      `Tip: "npm run translate" runs the whole pipeline for you.`
     );
   }
 
@@ -389,8 +396,9 @@ export async function mergeBatches(csvFilePath, batchDir, options = {}) {
 
   if (languageDirs.length === 0) {
     throw new Error(
-      'No language directories found in the translated folder. ' +
-      'Run translate-run first.'
+      'No translated batches found (the translated folder is empty). ' +
+      'Nothing has been translated yet: run "npm run translate:run" first. ' +
+      'If that step failed, fix its error (often an invalid API key or rate limit) and retry.'
     );
   }
 
@@ -436,6 +444,15 @@ export async function mergeBatches(csvFilePath, batchDir, options = {}) {
         }
       }
     }
+  }
+
+  // Nothing was translated at all: fail clearly instead of producing a
+  // merged CSV that only repeats the source text.
+  if (translationsById.size === 0) {
+    throw new Error(
+      'The translated batches contain no translations. ' +
+      'Run "npm run translate:run" first; if it failed, fix its error (often an invalid API key or rate limit) and retry.'
+    );
   }
 
   // Build merged records

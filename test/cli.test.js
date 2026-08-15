@@ -100,6 +100,47 @@ test('xlf-to-csv exits 1 when the XLF file is missing', () => {
   const result = runCli(['xlf-to-csv'], dir);
   assert.equal(result.status, 1);
   assert.match(result.stdout + result.stderr, /not found/);
+  assert.match(result.stdout + result.stderr, /ng extract-i18n/);
+});
+
+test('translate-merge exits 1 with an actionable message when nothing was translated', () => {
+  const dir = makeTempDir();
+  writeFixture(dir, 'messages.xlf', FIXTURE_XLF);
+
+  let result = runCli(['xlf-to-csv'], dir);
+  assert.equal(result.status, 0, result.stderr);
+  result = runCli(['translate-split'], dir);
+  assert.equal(result.status, 0, result.stderr);
+
+  result = runCli(['translate-merge'], dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /No translated batches/);
+  assert.match(result.stdout + result.stderr, /translate:run/);
+});
+
+test('csv-to-xlf exits 1 with a hint when the translated CSV does not exist', () => {
+  const dir = makeTempDir();
+  const result = runCli(['csv-to-xlf'], dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /Translated CSV not found/);
+  assert.match(result.stdout + result.stderr, /npm run translate/);
+});
+
+test('validate exits 1 with a hint when the CSV does not exist', () => {
+  const dir = makeTempDir();
+  const result = runCli(['validate'], dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /xlf-to-csv/);
+});
+
+test('the translate command is registered (with translate-all alias)', () => {
+  const dir = makeTempDir();
+  const result = runCli(['--help'], dir);
+  assert.match(result.stdout, /translate.*Run the full translation pipeline/);
+  assert.match(result.stdout, /translate-all/);
 });
 
 test('clean removes generated artifacts', () => {

@@ -251,6 +251,6 @@ test('mergeBatches fails clearly when there is nothing to merge', async () => {
 
   await assert.rejects(
     () => mergeBatches(csvPath, join(dir, 'batches')),
-    /Translated batches directory not found/
+    /No translated batches/
   );
 });

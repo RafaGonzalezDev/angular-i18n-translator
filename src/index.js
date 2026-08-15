@@ -3,7 +3,7 @@
  * CLI tool for managing Angular translation workflow with LLM
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { Command } from 'commander';
 import config, { getTargetLanguages } from './config.js';
 import { xlfToCsv, csvToXlf } from './csv-converter.js';
@@ -103,6 +103,14 @@ async function handleXlfToCsv() {
     return 1;
   }
 
+  if (!existsSync(sourceFile)) {
+    logError(`Source XLF file not found: ${sourceFile}`);
+    log('Extract it from your Angular project first:');
+    log('  ng extract-i18n --output-path src/locale --out-file messages.xlf');
+    log('Then copy it to this directory and run "npm run translate" again.');
+    return 1;
+  }
+
   const spinner = createSpinner(`Converting ${colors.path(sourceFile)} to ${colors.path(csvOutput)}`);
   spinner.start();
 
@@ -135,6 +143,15 @@ async function handleCsvToXlf() {
 
   if (targetLanguages.length === 0) {
     logError('No target languages configured');
+    return 1;
+  }
+
+  if (!existsSync(csvFile)) {
+    logError(`Translated CSV not found: ${csvFile}`);
+    log('There is nothing to convert yet. Run the pipeline first:');
+    log('  npm run translate          (full pipeline)');
+    log('  npm run translate:run      (only if you already split the CSV)');
+    log('  npm run translate:merge    (only if batches were already translated)');
     return 1;
   }
 
@@ -451,6 +468,12 @@ async function handleValidate() {
     return 1;
   }
 
+  if (!existsSync(csvFile)) {
+    logError(`CSV file not found: ${csvFile}`);
+    log('Generate it first with "npm run xlf-to-csv" (or run the full pipeline: npm run translate).');
+    return 1;
+  }
+
   const spinner = createSpinner(`Validating ${colors.path(csvFile)}`);
   spinner.start();
 
@@ -572,8 +595,9 @@ program
   });
 
 program
-  .command('translate-all')
-  .description('Run the full translation pipeline')
+  .command('translate')
+  .alias('translate-all')
+  .description('Run the full translation pipeline (recommended)')
   .option('-f, --force', 'Force re-translation of existing batches')
   .action(async (options) => {
     const exitCode = await handleTranslateAll(options);

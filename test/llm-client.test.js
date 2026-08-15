@@ -29,9 +29,16 @@ test('extractCSVContent unwraps markdown code blocks', () => {
   assert.equal(extractCSVContent(response), csv);
 });
 
-test('extractCSVContent unwraps triple-quoted blocks', () => {
-  const csv = 'id,source,es\na,Hello,Hola';
-  const response = `Sure! """${csv}"""`;
+test('extractCSVContent keeps legitimate CSV whose fields contain doubled quotes', () => {
+  // A field ending in doubled quotes plus its closing quote produces """;
+  // that must NOT be treated as a wrapper.
+  const csv = 'id,source,es\na,"Say ""hi""","Di ""hola"""';
+  assert.equal(extractCSVContent(csv), csv);
+});
+
+test('extractCSVContent unwraps a CSV wrapped in one pair of double quotes', () => {
+  const csv = 'id,source,es\na,"Hello, world","Hola, mundo"';
+  const response = `"${csv}"`;
   assert.equal(extractCSVContent(response), csv);
 });
 
