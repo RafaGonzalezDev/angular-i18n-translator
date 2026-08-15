@@ -6,24 +6,19 @@
       "file": "messages.en.xlf"
     },
     {
-      "code": "fi",
-      "name": "Finnish (Suomi)",
-      "file": "messages.fi.xlf"
-    },
-    {
       "code": "fr",
       "name": "French (Français)",
       "file": "messages.fr.xlf"
     },
     {
-      "code": "de",
-      "name": "German (Deutsch)",
-      "file": "messages.de.xlf"
+      "code": "hi",
+      "name": "Hindi (हिन्दी)",
+      "file": "messages.hi.xlf"
     },
     {
-      "code": "ko",
-      "name": "Korean (한국어)",
-      "file": "messages.ko.xlf"
+      "code": "ja",
+      "name": "Japanese (日本語)",
+      "file": "messages.ja.xlf"
     },
     {
       "code": "es",
