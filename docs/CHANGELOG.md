@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-08-16
+
+### Changed
+- **Simplified flow**: `npm run translate` is now the single recommended command (full pipeline). `translate:all` is kept as an alias; the individual step commands remain available for manual recovery
+- README restructured around a Quick Start (init -> translate -> validate -> copy); manual steps documented as recovery-only
+- Removed dead `npm run extract` script (the command did not exist)
+
+### Fixed
+- `translate:merge` with no translated batches now fails with an actionable message pointing to `translate:run` and likely causes (API key, rate limit), instead of letting later steps crash on a missing `messages.translated.csv`
+- `csv-to-xlf`, `xlf-to-csv` and `validate` now check that their input files exist before starting and explain which command generates them, so editors no longer show "Unable to open" for files that were never created
+
+---
+
 ## [1.3.0] - 2026-08-15
 
 ### Fixed

@@ -10,8 +10,9 @@ Node.js CLI tool for managing i18n translation workflows in Angular projects usi
 - [Installation](#installation)
 - [Project Structure](#project-structure)
 - [Configuration](#configuration)
+- [Quick Start](#quick-start)
 - [Commands](#commands)
-- [Workflow](#workflow)
+- [Manual Steps (Recovery)](#manual-steps-recovery)
 - [Recommended Setup: DeepSeek](#recommended-setup-deepseek)
 - [Other LLM Providers](#other-llm-providers)
 - [Manual Editing](#manual-editing)
@@ -144,56 +145,86 @@ Values like `${LLM_API_KEY}` are resolved from the environment (`.env`). If a re
 
 > **Note on `requestExtra`**: it is merged verbatim into the request body. Use it for provider-specific options such as DeepSeek's thinking mode (see below). Most other providers need no extra fields.
 
+## Quick Start
+
+After installation, the whole workflow is two commands:
+
+```bash
+npm run init        # first time only: creates i18n.config.json interactively
+npm run translate   # does everything: XLF -> CSV -> LLM -> merged CSV -> XLF
+```
+
+The full sequence is:
+
+1. **Extract i18n strings from Angular** and copy the file next to this tool:
+
+   ```bash
+   ng extract-i18n --output-path src/locale --out-file messages.xlf
+   ```
+
+   Only **XLIFF 1.2** is supported (the Angular CLI default); XLIFF 2.0 files are rejected with a clear error.
+
+2. **Run the pipeline:**
+
+   ```bash
+   npm run translate
+   ```
+
+   One command runs all five steps: XLF to CSV, batch splitting, LLM translation, merge, and CSV to XLF. Languages are processed one after another (to avoid saturating the provider's rate limits), while the batches of each language run in parallel according to `llm.concurrency`. If a step fails, the pipeline stops with a clear error telling you what to fix.
+
+3. **Review and validate:**
+
+   ```bash
+   npm run validate
+   ```
+
+4. **Copy the translated files to your Angular project:**
+
+   ```bash
+   cp dist-i18n/*.xlf your-angular-project/src/locale/
+   ```
+
+You normally never need the individual step commands: they exist for recovery when something fails. See [Manual Steps (Recovery)](#manual-steps-recovery).
+
+### Re-running
+
+`npm run translate` is safe to re-run: already translated batches are skipped. Use `npm run translate -- --force` to re-translate everything. If the source CSV shrinks between runs, stale batch files are removed automatically.
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run init` | Interactive configuration wizard |
-| `npm run xlf-to-csv` | Convert the XLF file to CSV |
-| `npm run translate:split` | Split the CSV into batches |
-| `npm run translate:run` | Translate batches with the LLM (`--force` to re-translate) |
-| `npm run translate:merge` | Merge translated batches into `messages.translated.csv` |
-| `npm run translate:all` | Full pipeline: all of the above plus `csv-to-xlf` |
-| `npm run csv-to-xlf` | Convert the translated CSV to one XLF per language |
+| `npm run init` | Interactive configuration wizard (first time only) |
+| `npm run translate` | **Full pipeline (recommended)**: XLF to CSV, split, translate, merge, CSV to XLF |
 | `npm run validate` | Validate the translated CSV |
 | `npm run clean` | Remove batches, output directory, and CSV files |
 | `npm test` | Run the automated test suite |
 
 Global options: `--quiet`, `--verbose`, `--version`, `--help`.
 
-## Workflow
+## Manual Steps (Recovery)
 
-### Step 1: Extract i18n strings from Angular
+The pipeline stops with an actionable error when something fails. If you need to inspect or repeat a single step, these are the individual commands it runs internally, in order:
 
-```bash
-ng extract-i18n --output-path src/locale --out-file messages.xlf
-```
+| Command | Step | Description |
+|---------|------|-------------|
+| `npm run xlf-to-csv` | 1 | Convert the XLF file to CSV |
+| `npm run translate:split` | 2 | Split the CSV into batches |
+| `npm run translate:run` | 3 | Translate batches with the LLM (`-- --force` to re-translate) |
+| `npm run translate:merge` | 4 | Merge translated batches into `messages.translated.csv` |
+| `npm run csv-to-xlf` | 5 | Convert the translated CSV to one XLF per language |
 
-Copy the generated `messages.xlf` into this tool's directory. Only **XLIFF 1.2** is supported (the Angular CLI default); XLIFF 2.0 files are rejected with a clear error.
-
-### Step 2: Run the full pipeline
-
-```bash
-npm run translate:all
-```
-
-This runs: XLF to CSV, batch splitting, LLM translation (languages sequentially, batches in parallel), merge, and CSV to XLF. If some batches fail, the pipeline continues for the successful languages and exits with a non-zero code.
-
-### Step 3: Review and validate
+Typical recovery flows:
 
 ```bash
-npm run validate
+# The LLM step failed (e.g. rate limit). Fix the cause and resume:
+npm run translate:run     # skips batches already translated
+npm run translate:merge
+npm run csv-to-xlf
+
+# Or simply re-run the pipeline; it resumes where it left off:
+npm run translate
 ```
-
-### Step 4: Copy translated files to your Angular project
-
-```bash
-cp dist-i18n/*.xlf your-angular-project/src/locale/
-```
-
-### Re-running
-
-`translate:run` skips batches that already have a translation, so it is safe to re-run after fixing individual failures. Use `--force` to re-translate everything. If the source CSV shrinks between runs, stale batch files are removed automatically by `translate:split`.
 
 ## Recommended Setup: DeepSeek
 
