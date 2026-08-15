@@ -3,12 +3,14 @@
  * Handles communication with OpenAI-compatible LLM APIs for CSV translation
  */
 
+import { parse as csvParseSync } from 'csv-parse/sync';
 import { APIError } from './errors.js';
 import { getLanguageName } from './languages.js';
 
 const RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff: 1s, 2s, 4s
 const MAX_RETRIES = 3;
-const DEFAULT_TIMEOUT = 60000; // 60 seconds timeout
+// Reasoning models on large batches can take minutes; see llm.timeoutMs
+const DEFAULT_TIMEOUT = 300000;
 const MAX_ERROR_BODY_LENGTH = 500; // Max characters to show from error body
 
 /**
@@ -84,7 +86,7 @@ function classifyHttpError(status, statusText, body, options = {}) {
 function buildSystemPrompt(targetLanguage, customPrompt) {
   const languageName = getLanguageName(targetLanguage);
   
-  const basePrompt = customPrompt || `You are a professional translator specializing in software localization. Your task is to translate CSV content from English to ${languageName} (${targetLanguage}).
+  const basePrompt = customPrompt || `You are a professional translator specializing in software localization. Your task is to translate CSV content from the source language (the "source" column) to ${languageName} (${targetLanguage}), whatever the source language is.
 
 IMPORTANT INSTRUCTIONS:
 1. The CSV contains a column "${targetLanguage}" that needs to be translated from the "source" column
@@ -94,7 +96,8 @@ IMPORTANT INSTRUCTIONS:
 5. Do NOT translate the translation unit IDs in the "id" column
 6. Return ONLY the CSV content, no additional text or explanations
 7. Keep the exact same CSV format with columns: id,source,note,meaning,${targetLanguage}
-8. The ${targetLanguage} column currently contains English text as placeholders - translate them to ${languageName}`;
+8. The ${targetLanguage} column currently contains the source text as a placeholder - replace it with the ${languageName} translation
+9. Return EVERY row with the same ids and in the same order; never drop or reorder rows`;
 
   return basePrompt;
 }
@@ -147,79 +150,109 @@ function extractCSVContent(responseText) {
 }
 
 /**
- * Validates that the translation was performed by comparing source and target columns
+ * Parses CSV content into records, tolerating ragged rows from LLM output.
+ * @param {string} csv - CSV content
+ * @returns {Array<Object>} Parsed records
+ */
+function parseCsvRecords(csv) {
+  return csvParseSync(csv, {
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    trim: true,
+  });
+}
+
+/**
+ * Validates that the translation was performed, comparing records by id.
+ *
+ * Checks:
+ * - Both CSVs parse and contain an `id` column
+ * - Every source id is present in the translation
+ * - No more than 90% of translatable rows are identical to the source
+ *
  * @param {string} sourceCSV - Original CSV content
  * @param {string} translatedCSV - Translated CSV content
  * @param {string} targetLanguage - Target language code
- * @returns {Object} - { isValid: boolean, reason?: string, untranslatedCount?: number }
+ * @returns {{isValid: boolean, reason?: string, untranslatedCount?: number}}
  */
 function validateTranslation(sourceCSV, translatedCSV, targetLanguage) {
-  const parseCSV = (csv) => {
-    const lines = csv.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-    const sourceIndex = headers.indexOf('source');
-    const targetIndex = headers.indexOf(targetLanguage) || headers.findIndex(h => h.startsWith('target_'));
-    
-    if (sourceIndex === -1 || targetIndex === -1) {
-      return null;
-    }
-    
-    const rows = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length > Math.max(sourceIndex, targetIndex)) {
-        rows.push({
-          source: parts[sourceIndex]?.trim() || '',
-          target: parts[targetIndex]?.trim() || ''
-        });
-      }
-    }
-    return { headers, rows };
-  };
-  
-  const sourceData = parseCSV(sourceCSV);
-  const translatedData = parseCSV(translatedCSV);
-  
-  if (!sourceData || !translatedData) {
-    return { isValid: false, reason: 'Could not parse CSV for validation' };
+  let sourceRecords;
+  let translatedRecords;
+
+  try {
+    sourceRecords = parseCsvRecords(sourceCSV);
+  } catch (error) {
+    return { isValid: false, reason: `Could not parse batch CSV: ${error.message}` };
   }
-  
-  if (sourceData.rows.length !== translatedData.rows.length) {
-    return { isValid: false, reason: `Row count mismatch: ${sourceData.rows.length} vs ${translatedData.rows.length}` };
+
+  try {
+    translatedRecords = parseCsvRecords(translatedCSV);
+  } catch (error) {
+    return { isValid: false, reason: `Could not parse LLM response as CSV: ${error.message}` };
   }
-  
+
+  if (sourceRecords.length === 0 || !('id' in (sourceRecords[0] || {}))) {
+    return { isValid: false, reason: 'Batch CSV has no rows or no "id" column' };
+  }
+  if (translatedRecords.length === 0 || !('id' in (translatedRecords[0] || {}))) {
+    return {
+      isValid: false,
+      reason: 'LLM response has no rows or no "id" column; the model did not return the expected CSV',
+    };
+  }
+
+  const translatedById = new Map();
+  for (const record of translatedRecords) {
+    if (record.id) {
+      translatedById.set(record.id, record);
+    }
+  }
+
+  const missingIds = sourceRecords
+    .map(record => record.id)
+    .filter(id => id && !translatedById.has(id));
+
+  if (missingIds.length > 0) {
+    const shown = missingIds.slice(0, 5).join(', ');
+    const more = missingIds.length > 5 ? ` (+${missingIds.length - 5} more)` : '';
+    return {
+      isValid: false,
+      reason: `LLM response is missing ${missingIds.length} row(s): ${shown}${more}`,
+    };
+  }
+
   let identicalCount = 0;
   let totalTranslatable = 0;
-  
-  for (let i = 0; i < sourceData.rows.length; i++) {
-    const sourceText = sourceData.rows[i].source;
-    const targetText = translatedData.rows[i].target;
-    
-    // Skip empty sources or sources that are just placeholders
-    if (!sourceText || sourceText.trim() === '' || /^[\s{<\[\(]+$/.test(sourceText)) {
+
+  for (const record of sourceRecords) {
+    const sourceText = (record.source || '').trim();
+    const targetText = ((translatedById.get(record.id) || {})[targetLanguage] || '').trim();
+
+    // Skip empty sources or sources that are only markup/placeholder noise
+    if (!sourceText || /^[\s{<\[\(]+$/.test(sourceText)) {
       continue;
     }
-    
+
     totalTranslatable++;
-    
-    // Compare normalized versions (case-insensitive, trimmed)
-    if (sourceText.trim().toLowerCase() === targetText.trim().toLowerCase()) {
+
+    if (sourceText.toLowerCase() === targetText.toLowerCase()) {
       identicalCount++;
     }
   }
-  
+
   // If more than 90% are identical, likely no translation occurred
   if (totalTranslatable > 0) {
     const identicalPercentage = (identicalCount / totalTranslatable) * 100;
     if (identicalPercentage > 90) {
-      return { 
-        isValid: false, 
+      return {
+        isValid: false,
         reason: `No translation detected: ${identicalCount}/${totalTranslatable} (${identicalPercentage.toFixed(1)}%) entries are identical to source`,
-        untranslatedCount: identicalCount
+        untranslatedCount: identicalCount,
       };
     }
   }
-  
+
   return { isValid: true };
 }
 
@@ -237,11 +270,13 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
     onProgress,
     currentBatch = 1,
     totalBatches = 1,
-    timeout = DEFAULT_TIMEOUT,
     verbose = false
   } = options;
 
-  const { baseURL, model, apiKey, systemPrompt } = config;
+  const { baseURL, model, apiKey, systemPrompt, requestExtra } = config;
+  const timeout = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0
+    ? config.timeoutMs
+    : DEFAULT_TIMEOUT;
 
   // Progress tracking for ETA calculation
   const startTime = Date.now();
@@ -273,12 +308,18 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
   }
 
   // Build the user prompt with CSV content
-  const userPrompt = `Translate the following CSV content to ${targetLanguage}:\n\n${csvContent}`;
+  const languageName = getLanguageName(targetLanguage);
+  const userPrompt =
+    `Translate the following CSV to ${languageName} (${targetLanguage}). ` +
+    `Translate ONLY the "${targetLanguage}" column. ` +
+    `Return ALL rows with the same ids, the same order, and the same CSV header.\n\n` +
+    csvContent;
 
   // Build the full system prompt
   const fullSystemPrompt = buildSystemPrompt(targetLanguage, systemPrompt);
 
-  // Prepare request body
+  // Prepare request body (requestExtra allows provider-specific options such
+  // as DeepSeek's {"thinking": {"type": "disabled"}})
   const requestBody = {
     model: model,
     messages: [
@@ -286,6 +327,10 @@ async function translateBatch(csvContent, targetLanguage, config, options = {}) 
       { role: 'user', content: userPrompt }
     ]
   };
+
+  if (requestExtra && typeof requestExtra === 'object') {
+    Object.assign(requestBody, requestExtra);
+  }
 
   // Exponential backoff retry logic
   let lastError;
