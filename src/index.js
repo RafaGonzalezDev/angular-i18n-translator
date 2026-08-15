@@ -1,10 +1,9 @@
 /**
  * Angular i18n Translator - Main Entry Point
  * CLI tool for managing Angular translation workflow with LLM
- * 
- * Refactored with Commander.js for better UX and structured commands
  */
 
+import { readFileSync, existsSync } from 'fs';
 import { Command } from 'commander';
 import config, { getTargetLanguages } from './config.js';
 import { xlfToCsv, csvToXlf } from './csv-converter.js';
@@ -12,22 +11,17 @@ import { splitBatches, runBatches, mergeBatches } from './batch-manager.js';
 import { cleanAll } from './cleaner.js';
 import { validate } from './validator.js';
 import handleInit from './commands/init.js';
-import { 
-  colors, 
-  createSpinner, 
-  printHeader, 
-  printSummaryLine,
-  formatDuration 
-} from './cli/ui.js';
-import { formatError, I18nTranslatorError } from './errors.js';
+import { colors, createSpinner } from './cli/ui.js';
+import { formatError } from './errors.js';
+
+const packageJson = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
+);
 
 // ============================================================================
 // GLOBAL OPTIONS
 // ============================================================================
 
-/**
- * Global CLI options accessible from any command
- */
 let globalOptions = {
   quiet: false,
   verbose: false,
@@ -73,17 +67,6 @@ function logWarning(message) {
   console.log(colors.warning(`⚠ ${message}`));
 }
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-/**
- * Get target language codes (excluding source language)
- */
-function getTargetLanguageCodes() {
-  return getTargetLanguages().map(lang => lang.code);
-}
-
 /**
  * Print a section banner
  */
@@ -95,59 +78,10 @@ function printBanner(title) {
 }
 
 /**
- * Print a translation report summary
+ * Get target language codes (excluding source language)
  */
-function printTranslationReport(results, targetLanguages) {
-  const successful = [];
-  const failed = [];
-  
-  results.forEach((result, index) => {
-    const lang = targetLanguages[index];
-    if (result.status === 'fulfilled' || result.status === 'success') {
-      successful.push({ lang, summary: result.value || result });
-    } else {
-      failed.push({ lang, error: result.reason || result.error });
-    }
-  });
-  
-  console.log();
-  console.log(colors.highlight('━━━ Translation Report ━━━'));
-  console.log();
-  
-  if (successful.length > 0) {
-    console.log(colors.success(`Successful (${successful.length}):`));
-    for (const { lang, summary } of successful) {
-      const processed = summary?.processed ?? summary?.value?.processed ?? 0;
-      const skipped = summary?.skipped ?? summary?.value?.skipped ?? 0;
-      const failedCount = summary?.failed ?? summary?.value?.failed ?? 0;
-      console.log(`  ${colors.success('✓')} ${lang}: ` +
-          `processed=${colors.number(processed)}, ` +
-          `skipped=${colors.number(skipped)}, ` +
-          `failed=${colors.number(failedCount)}`);
-    }
-  }
-  
-  if (failed.length > 0) {
-    console.log();
-    console.log(colors.error(`Failed (${failed.length}):`));
-    for (const { lang, error } of failed) {
-      console.log(`  ${colors.error('✗')} ${lang}: ${error?.message || error || 'Unknown error'}`);
-    }
-  }
-  
-  console.log();
-  console.log(colors.dim('─'.repeat(50)));
-  
-  const totalProcessed = successful.reduce((sum, { summary }) => {
-    const val = summary?.processed ?? summary?.value?.processed ?? 0;
-    return sum + val;
-  }, 0);
-  
-  console.log(`Total: ${colors.number(successful.length)}/${colors.number(targetLanguages.length)} languages succeeded`);
-  console.log(`Batches processed: ${colors.number(totalProcessed)}`);
-  console.log();
-  
-  return { successful, failed };
+function getTargetLanguageCodes() {
+  return getTargetLanguages().map(lang => lang.code);
 }
 
 // ============================================================================
@@ -159,29 +93,37 @@ function printTranslationReport(results, targetLanguages) {
  */
 async function handleXlfToCsv() {
   printBanner('XLF to CSV Conversion');
-  
+
   const sourceFile = config.config.sourceFile || 'messages.xlf';
   const csvOutput = config.config.csvOutput || 'messages.csv';
   const targetLanguages = getTargetLanguageCodes();
-  
+
   if (targetLanguages.length === 0) {
     logError('No target languages configured');
     return 1;
   }
-  
+
+  if (!existsSync(sourceFile)) {
+    logError(`Source XLF file not found: ${sourceFile}`);
+    log('Extract it from your Angular project first:');
+    log('  ng extract-i18n --output-path src/locale --out-file messages.xlf');
+    log('Then copy it to this directory and run "npm run translate" again.');
+    return 1;
+  }
+
   const spinner = createSpinner(`Converting ${colors.path(sourceFile)} to ${colors.path(csvOutput)}`);
   spinner.start();
-  
+
   try {
     await xlfToCsv(sourceFile, csvOutput, targetLanguages, {
-      sourceLanguage: config.config.sourceLanguage
+      sourceLanguage: config.config.sourceLanguage,
     });
-    
+
     spinner.succeed(`CSV file created: ${colors.path(csvOutput)}`);
-    
+
     logVerbose(`Source language: ${config.config.sourceLanguage}`);
     logVerbose(`Target languages: ${targetLanguages.join(', ')}`);
-    
+
     return 0;
   } catch (err) {
     spinner.fail(`Conversion failed: ${err.message}`);
@@ -194,33 +136,54 @@ async function handleXlfToCsv() {
  */
 async function handleCsvToXlf() {
   printBanner('CSV to XLF Conversion');
-  
+
   const csvFile = (config.config.csvOutput || 'messages.csv').replace('.csv', '.translated.csv');
   const outputDir = config.config.outputDir || 'dist-i18n';
   const targetLanguages = getTargetLanguageCodes();
-  
+
   if (targetLanguages.length === 0) {
     logError('No target languages configured');
     return 1;
   }
-  
+
+  if (!existsSync(csvFile)) {
+    logError(`Translated CSV not found: ${csvFile}`);
+    log('There is nothing to convert yet. Run the pipeline first:');
+    log('  npm run translate          (full pipeline)');
+    log('  npm run translate:run      (only if you already split the CSV)');
+    log('  npm run translate:merge    (only if batches were already translated)');
+    return 1;
+  }
+
+  const fileNames = {};
+  for (const lang of getTargetLanguages()) {
+    if (lang.file) {
+      fileNames[lang.code] = lang.file;
+    }
+  }
+
   const spinner = createSpinner(`Converting ${colors.path(csvFile)} to XLF files`);
   spinner.start();
-  
+
   try {
-    const generatedFiles = await csvToXlf(csvFile, outputDir, targetLanguages, {
+    const { files, issues } = await csvToXlf(csvFile, outputDir, targetLanguages, {
       sourceLanguage: config.config.sourceLanguage,
-      original: 'messages'
+      original: 'messages',
+      fileNames,
     });
-    
+
     spinner.succeed('XLF conversion complete');
-    
+
     console.log();
     log('Generated XLF files:');
-    for (const [lang, path] of Object.entries(generatedFiles)) {
+    for (const [lang, path] of Object.entries(files)) {
       log(`  ${lang}: ${colors.path(path)}`);
     }
-    
+
+    for (const issue of issues) {
+      logWarning(issue);
+    }
+
     return 0;
   } catch (err) {
     spinner.fail(`Conversion failed: ${err.message}`);
@@ -233,32 +196,24 @@ async function handleCsvToXlf() {
  */
 async function handleTranslateSplit() {
   printBanner('Splitting CSV into Batches');
-  
+
   const csvFile = config.config.csvOutput || 'messages.csv';
   const batchDir = config.config.batchDir || 'batches';
   const batchSize = config.config.llm?.batchSize || 50;
-  
+
   const spinner = createSpinner('Reading CSV and creating batches...');
   spinner.start();
-  
+
   try {
-    const result = await splitBatches(csvFile, batchSize, batchDir, {
-      verbose: globalOptions.verbose
-    });
-    
-    const batchCount = result.batchCount || result;
-    const recordCount = result.recordCount || 0;
-    
-    spinner.succeed(`Created ${batchCount} batches (${recordCount} records)`);
-    
-    logVerbose(`Batch size: ${batchSize} records per batch`);
-    
-    if (globalOptions.verbose && result.verboseInfo) {
-      logVerbose('Split details:');
-      logVerbose(`  Directories created: ${result.verboseInfo.directoriesCreated.length}`);
-      logVerbose(`  Files read: ${result.verboseInfo.filesRead.length}`);
+    const result = await splitBatches(csvFile, batchSize, batchDir);
+
+    spinner.succeed(`Created ${result.batchCount} batches (${result.recordCount} records)`);
+
+    if (result.removedStale.length > 0) {
+      logVerbose(`Removed ${result.removedStale.length} stale batch file(s) from previous runs`);
     }
-    
+    logVerbose(`Batch size: ${batchSize} records per batch`);
+
     return 0;
   } catch (err) {
     spinner.fail(`Split failed: ${err.message}`);
@@ -267,135 +222,129 @@ async function handleTranslateSplit() {
 }
 
 /**
- * Handle translate-run command
+ * Handle translate-run command.
+ *
+ * Languages are processed sequentially; batches within each language run in
+ * parallel up to `concurrency`. This keeps API load bounded and progress
+ * output readable.
  */
 async function handleTranslateRun(options = {}) {
   const { force = false } = options;
-  
+
   printBanner('Running LLM Translation');
-  
+
   const batchDir = config.config.batchDir || 'batches';
   const targetLanguages = getTargetLanguageCodes();
-  
+
   if (targetLanguages.length === 0) {
     logError('No target languages configured');
     return 1;
   }
-  
+
   const llmConfig = config.config.llm;
-  
+
   if (!llmConfig) {
     logError('LLM configuration is missing in i18n.config.json');
     log('Please ensure the "llm" object is defined in your configuration file.');
     return 1;
   }
-  
-  // Validate LLM config
+
   const missingFields = [];
   if (!llmConfig.baseURL) missingFields.push('baseURL');
   if (!llmConfig.model) missingFields.push('model');
   if (!llmConfig.apiKey) missingFields.push('apiKey');
-  
+
   if (missingFields.length > 0) {
     logError(`LLM configuration is incomplete. Missing fields: ${missingFields.join(', ')}`);
     console.log();
-    log('Current LLM config:');
-    log(`  - baseURL: ${llmConfig.baseURL || colors.dim('(not set)')}`);
-    log(`  - model: ${llmConfig.model || colors.dim('(not set)')}`);
-    log(`  - apiKey: ${llmConfig.apiKey ? colors.success('***configured***') : colors.dim('(not set)')}`);
-    console.log();
     log('To fix:');
-    log('  1. Set LLM_API_KEY environment variable, OR');
-    log('  2. Add your API key directly in i18n.config.json');
+    log('  1. Set the missing values in your .env file (see .env.example), OR');
+    log('  2. Add them directly in i18n.config.json');
     return 1;
   }
-  
-  const concurrency = config.config.llm?.concurrency || 5;
-  const verbose = globalOptions.verbose;
-  
-  log(`Processing ${colors.number(targetLanguages.length)} languages with concurrency: ${colors.number(concurrency)}`);
+
+  const concurrency = llmConfig.concurrency || 5;
+
+  log(`Processing ${colors.number(targetLanguages.length)} languages sequentially (batch concurrency: ${colors.number(concurrency)})`);
   log(`Languages: ${targetLanguages.map(l => colors.highlight(l)).join(', ')}`);
   console.log();
 
-  // Spinner único global
-  const spinner = createSpinner(`Translating ${targetLanguages.length} languages...`);
+  const spinner = createSpinner('Starting translation...');
   spinner.start();
 
-  // Track de estado de cada idioma (solo para el reporte final)
-  const languageStatus = {};
-  targetLanguages.forEach(lang => {
-    languageStatus[lang] = { status: 'pending', batches: 0, total: 0 };
-  });
+  const results = [];
 
-  const languagePromises = targetLanguages.map(async (lang) => {
-    const summary = await runBatches(batchDir, lang, llmConfig, { 
-      force, 
-      concurrency,
-      verbose,
-      onStart: (info) => {
-        // No actualizar el spinner - solo trackear estado interno
-        languageStatus[lang].status = 'translating';
-      },
-      onProgress: (batchNumber, totalBatches) => {
-        // Actualizar estado interno, NO el spinner
-        languageStatus[lang].batches = batchNumber;
-        languageStatus[lang].total = totalBatches;
-      },
-      onComplete: (summary) => {
-        languageStatus[lang].status = 'completed';
-        languageStatus[lang].summary = summary;
-      },
-      onError: (error) => {
-        languageStatus[lang].status = 'failed';
-        languageStatus[lang].error = error.error;
-      }
-    });
-    
-    return { lang, status: 'fulfilled', value: summary };
-  });
+  for (const lang of targetLanguages) {
+    spinner.text = `Translating ${colors.highlight(lang)}...`;
 
-  const results = await Promise.allSettled(languagePromises);
-  
-  // Calcular resultado global
-  const completedLanguages = Object.values(languageStatus).filter(l => l.status === 'completed').length;
-  const failedLanguages = Object.values(languageStatus).filter(l => l.status === 'failed').length;
-  const totalBatches = Object.values(languageStatus).reduce((sum, l) => sum + (l.summary?.processed || 0), 0);
-
-  if (failedLanguages === 0) {
-    spinner.succeed(`Translation complete (${totalBatches} batches processed)`);
-  } else if (completedLanguages > 0) {
-    spinner.warn(`${completedLanguages} languages completed, ${failedLanguages} failed (${totalBatches} batches processed)`);
-  } else {
-    spinner.fail(`All ${failedLanguages} languages failed to process`);
+    try {
+      const summary = await runBatches(batchDir, lang, llmConfig, {
+        force,
+        concurrency,
+        verbose: globalOptions.verbose,
+      });
+      results.push({ lang, summary });
+    } catch (err) {
+      results.push({ lang, error: err });
+    }
   }
-  
-  // Convert results from Promise.allSettled to the expected format
-  const formattedResults = results.map(result => {
-    if (result.status === 'fulfilled') {
-      return { 
-        status: 'fulfilled', 
-        value: result.value  // result.value already contains the object returned by the promise
-      };
-    } else {
-      return { 
-        status: 'rejected', 
-        reason: result.reason  // rejected promises have reason directly, not in result.value.reason
-      };
-    }
-  });
-  
-  // Print detailed report
-  const { successful, failed } = printTranslationReport(formattedResults, targetLanguages);
-  
-  if (successful.length > 0) {
-    if (failed.length > 0) {
-      logWarning(`${failed.length} language(s) failed, but ${successful.length} succeeded`);
-    }
-    return 0;
+
+  // Classify results: a language succeeds only when no batch failed
+  const successful = results.filter(r => !r.error && r.summary.failed === 0);
+  const failed = results.filter(r => r.error || r.summary.failed > 0);
+
+  const totalProcessed = successful.reduce((sum, r) => sum + r.summary.processed, 0);
+  const totalSkipped = successful.reduce((sum, r) => sum + r.summary.skipped, 0);
+
+  if (failed.length === 0) {
+    spinner.succeed(`Translation complete (${totalProcessed} batches processed, ${totalSkipped} skipped)`);
+  } else if (successful.length > 0) {
+    spinner.warn(`${successful.length} language(s) completed, ${failed.length} failed`);
   } else {
-    logError('All languages failed to process');
+    spinner.fail('All languages failed to process');
+  }
+
+  // Print report
+  console.log();
+  console.log(colors.highlight('━━━ Translation Report ━━━'));
+  console.log();
+
+  if (successful.length > 0) {
+    console.log(colors.success(`Successful (${successful.length}):`));
+    for (const { lang, summary } of successful) {
+      console.log(`  ${colors.success('✓')} ${lang}: ` +
+        `processed=${colors.number(summary.processed)}, ` +
+        `skipped=${colors.number(summary.skipped)}, ` +
+        `failed=${colors.number(summary.failed)}`);
+    }
+  }
+
+  if (failed.length > 0) {
+    console.log();
+    console.log(colors.error(`Failed (${failed.length}):`));
+    for (const { lang, error, summary } of failed) {
+      if (error) {
+        console.log(`  ${colors.error('✗')} ${lang}: ${error.message}`);
+      } else {
+        console.log(`  ${colors.error('✗')} ${lang}: ${summary.failed} batch(es) failed`);
+        for (const batchError of summary.errors) {
+          console.log(`      ${colors.dim(`- ${batchError.batch}: ${batchError.error}`)}`);
+        }
+      }
+    }
+  }
+
+  console.log();
+  console.log(colors.dim('─'.repeat(50)));
+  console.log(`Total: ${colors.number(successful.length)}/${colors.number(targetLanguages.length)} languages succeeded`);
+  console.log(`Batches processed: ${colors.number(totalProcessed)} (skipped: ${colors.number(totalSkipped)})`);
+  console.log();
+
+  if (failed.length > 0) {
+    logWarning('Some batches failed. Re-run translate-run to retry them (translated batches are skipped).');
     return 1;
   }
+  return 0;
 }
 
 /**
@@ -411,18 +360,18 @@ async function handleTranslateMerge() {
   spinner.start();
 
   try {
-    const result = await mergeBatches(csvFile, batchDir, {
-      verbose: globalOptions.verbose
-    });
+    const result = await mergeBatches(csvFile, batchDir);
 
-    const mergedFile = result.outputFile || result;
-    spinner.succeed(`Merged CSV saved to: ${colors.path(mergedFile)}`);
+    spinner.succeed(`Merged CSV saved to: ${colors.path(result.outputFile)}`);
 
-    if (globalOptions.verbose && result.verboseInfo) {
-      logVerbose('Merge details:');
-      logVerbose(`  Languages processed: ${result.verboseInfo.languagesProcessed.join(', ')}`);
-      logVerbose(`  Total batches: ${result.verboseInfo.totalBatches}`);
-      logVerbose(`  Total records: ${result.verboseInfo.totalRecords}`);
+    for (const { lang, ids } of result.missing) {
+      const shown = ids.slice(0, 3).join(', ');
+      const more = ids.length > 3 ? `, +${ids.length - 3} more` : '';
+      logWarning(`${lang}: ${ids.length} record(s) are still identical to the source text (e.g. ${shown}${more})`);
+    }
+
+    if (result.missing.length > 0) {
+      logWarning('They were never translated, or the translation is legitimately identical to the source. Review them.');
     }
 
     return 0;
@@ -433,13 +382,13 @@ async function handleTranslateMerge() {
 }
 
 /**
- * Handle translate-all command
+ * Handle translate-all command (full pipeline)
  */
 async function handleTranslateAll(options = {}) {
   const { force = false } = options;
-  
+
   printBanner('Full Translation Pipeline');
-  
+
   const steps = [
     { name: 'XLF to CSV', handler: handleXlfToCsv },
     { name: 'Split into batches', handler: handleTranslateSplit },
@@ -447,69 +396,62 @@ async function handleTranslateAll(options = {}) {
     { name: 'Merge translated batches', handler: handleTranslateMerge },
     { name: 'CSV to XLF', handler: handleCsvToXlf },
   ];
-  
+
   const stepResults = [];
-  
+  let pipelineOk = true;
+
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const stepNum = i + 1;
-    
+
     console.log();
     log(colors.bold(`Step ${stepNum}/${steps.length}: ${step.name}`));
     console.log();
-    
+
+    let exitCode;
     try {
-      const result = await step.handler();
-      stepResults.push({ name: step.name, success: result === 0 });
-      
-      if (result !== 0) {
-        // Allow partial failure for translation step
-        if (step.name === 'Run LLM translation') {
-          logWarning('Translation step had failures, continuing with partial results...');
-          continue;
-        }
-        
-        logError(`Pipeline failed at step: ${step.name}`);
-        return 1;
-      }
+      exitCode = await step.handler();
     } catch (err) {
       stepResults.push({ name: step.name, success: false, error: err.message });
       logError(`Step failed: ${step.name} - ${err.message}`);
-      
+      return 1;
+    }
+
+    const success = exitCode === 0;
+    stepResults.push({ name: step.name, success });
+
+    if (!success) {
+      // Translation failures are partial: continue so successful languages
+      // still produce output, but mark the pipeline as failed overall.
       if (step.name === 'Run LLM translation') {
-        logWarning('Continuing with partial results...');
+        logWarning('Translation step had failures; continuing with partial results.');
+        pipelineOk = false;
         continue;
       }
-      
+
+      logError(`Pipeline failed at step: ${step.name}`);
       return 1;
     }
   }
-  
-  // Print final summary
+
+  // Final summary
   console.log();
   console.log(colors.highlight('━━━ Pipeline Summary ━━━'));
   console.log();
-  
-  const failedSteps = stepResults.filter(s => !s.success);
-  
-  if (failedSteps.length === 0) {
-    logSuccess('All steps completed successfully!');
-  } else {
-    logWarning('Completed with warnings:');
-    for (const step of failedSteps) {
-      log(`  ${colors.warning('!')} ${step.name}${step.error ? `: ${step.error}` : ''}`);
-    }
-  }
-  
-  console.log();
-  console.log(colors.dim('─'.repeat(50)));
+
   for (const step of stepResults) {
     const icon = step.success ? colors.success('✓') : colors.error('✗');
-    log(`  ${icon} ${step.name}`);
+    log(`  ${icon} ${step.name}${step.error ? `: ${step.error}` : ''}`);
   }
   console.log();
-  
-  return 0;
+
+  if (pipelineOk) {
+    logSuccess('All steps completed successfully!');
+    return 0;
+  }
+
+  logWarning('Pipeline completed with translation failures. Review the report above.');
+  return 1;
 }
 
 /**
@@ -517,76 +459,62 @@ async function handleTranslateAll(options = {}) {
  */
 async function handleValidate() {
   printBanner('CSV Validation');
-  
+
   const csvFile = config.config.csvOutput || 'messages.csv';
   const targetLanguages = getTargetLanguageCodes();
-  
+
   if (targetLanguages.length === 0) {
     logError('No target languages configured');
     return 1;
   }
-  
+
+  if (!existsSync(csvFile)) {
+    logError(`CSV file not found: ${csvFile}`);
+    log('Generate it first with "npm run xlf-to-csv" (or run the full pipeline: npm run translate).');
+    return 1;
+  }
+
   const spinner = createSpinner(`Validating ${colors.path(csvFile)}`);
   spinner.start();
-  
+
   const exitCode = validate(csvFile, targetLanguages, { verbose: !globalOptions.quiet });
-  
+
   if (exitCode === 0) {
     spinner.succeed('Validation passed');
   } else {
     spinner.fail('Validation failed');
   }
-  
+
   return exitCode;
 }
 
 /**
  * Handle clean command
  */
-async function handleClean(options = {}) {
-  printBanner('Cleaning Directories');
-  
-  // Parse clean options
-  let cleanAllOptions;
-  
-  if (options.csvOnly) {
-    cleanAllOptions = { csv: true, batches: false, output: false };
-  } else if (options.batchesOnly) {
-    cleanAllOptions = { csv: false, batches: true, output: false };
-  } else if (options.outputOnly) {
-    cleanAllOptions = { csv: false, batches: false, output: true };
-  } else if (options.keepCsv) {
-    cleanAllOptions = { csv: false, batches: true, output: true };
-  } else {
-    cleanAllOptions = { csv: true, batches: true, output: true };
-  }
-  
-  const spinner = createSpinner('Cleaning directories');
+async function handleClean() {
+  printBanner('Cleaning Generated Files');
+
+  const spinner = createSpinner('Cleaning batches, output directory and CSV files');
   spinner.start();
-  
+
   try {
-    await cleanAll({
+    const { removed } = await cleanAll({
       batchDir: config.config.batchDir || 'batches',
       outputDir: config.config.outputDir || 'dist-i18n',
       csvPath: config.config.csvOutput || 'messages.csv',
-      translatedCsvPath: (config.config.csvOutput || 'messages.csv').replace('.csv', '.translated.csv')
-    }, cleanAllOptions);
-    
-    // Determine message
-    let message = 'Cleanup completed';
-    if (cleanAllOptions.csv && !cleanAllOptions.batches && !cleanAllOptions.output) {
-      message = 'CSV cleanup completed';
-    } else if (!cleanAllOptions.csv && cleanAllOptions.batches && !cleanAllOptions.output) {
-      message = 'Batch directories cleanup completed';
-    } else if (!cleanAllOptions.csv && !cleanAllOptions.batches && cleanAllOptions.output) {
-      message = 'Output directory cleanup completed';
-    } else if (cleanAllOptions.batches && cleanAllOptions.output && !cleanAllOptions.csv) {
-      message = 'Batch and output cleanup completed (CSV files kept)';
-    } else if (cleanAllOptions.csv && cleanAllOptions.batches && cleanAllOptions.output) {
-      message = 'Full cleanup completed';
+      translatedCsvPath: (config.config.csvOutput || 'messages.csv').replace('.csv', '.translated.csv'),
+    });
+
+    spinner.succeed(
+      removed.length > 0
+        ? `Cleanup completed (${removed.length} item(s) removed)`
+        : 'Nothing to clean'
+    );
+
+    for (const path of removed) {
+      logVerbose(`Removed: ${path}`);
     }
-    
-    spinner.succeed(message);
+
     return 0;
   } catch (err) {
     spinner.fail(`Cleanup failed: ${err.message}`);
@@ -603,11 +531,10 @@ const program = new Command();
 program
   .name('angular-i18n-translator')
   .description('CLI for managing Angular i18n translations with LLM')
-  .version('1.0.0')
+  .version(packageJson.version)
   .option('--quiet', 'Suppress non-essential output')
   .option('--verbose', 'Enable verbose output')
   .hook('preAction', (thisCommand) => {
-    // Capture global options before any action
     globalOptions = {
       quiet: thisCommand.opts().quiet || false,
       verbose: thisCommand.opts().verbose || false,
@@ -618,7 +545,6 @@ program
 // COMMANDS
 // ============================================================================
 
-// Init command
 program
   .command('init')
   .description('Interactive configuration wizard to set up i18n.config.json and .env')
@@ -627,7 +553,6 @@ program
     process.exit(exitCode);
   });
 
-// XLF to CSV command
 program
   .command('xlf-to-csv')
   .description('Convert XLF file to CSV format')
@@ -636,16 +561,14 @@ program
     process.exit(exitCode);
   });
 
-// CSV to XLF command
 program
   .command('csv-to-xlf')
-  .description('Convert CSV to XLF files per language')
+  .description('Convert translated CSV to XLF files per language')
   .action(async () => {
     const exitCode = await handleCsvToXlf();
     process.exit(exitCode);
   });
 
-// Translate split command
 program
   .command('translate-split')
   .description('Split CSV into batches for translation')
@@ -654,54 +577,46 @@ program
     process.exit(exitCode);
   });
 
-// Translate run command
 program
   .command('translate-run')
-  .description('Process batches with LLM (parallel processing)')
+  .description('Translate batches with the LLM (languages sequentially, batches in parallel)')
   .option('-f, --force', 'Force re-translation of existing batches')
   .action(async (options) => {
     const exitCode = await handleTranslateRun(options);
     process.exit(exitCode);
   });
 
-// Translate merge command
 program
   .command('translate-merge')
-  .description('Merge translated batches into CSV')
+  .description('Merge translated batches into the translated CSV')
   .action(async () => {
     const exitCode = await handleTranslateMerge();
     process.exit(exitCode);
   });
 
-// Translate all command (full pipeline)
 program
-  .command('translate-all')
-  .description('Run full translation pipeline')
+  .command('translate')
+  .alias('translate-all')
+  .description('Run the full translation pipeline (recommended)')
   .option('-f, --force', 'Force re-translation of existing batches')
   .action(async (options) => {
     const exitCode = await handleTranslateAll(options);
     process.exit(exitCode);
   });
 
-// Validate command
 program
   .command('validate')
-  .description('Validate CSV consistency')
+  .description('Validate translated CSV consistency')
   .action(async () => {
     const exitCode = await handleValidate();
     process.exit(exitCode);
   });
 
-// Clean command
 program
   .command('clean')
-  .description('Clean generated directories')
-  .option('--csv-only', 'Clean only CSV files')
-  .option('--batches-only', 'Clean only batch directories')
-  .option('--output-only', 'Clean only output directory')
-  .option('--keep-csv', 'Keep CSV files, clean batches and output')
-  .action(async (options) => {
-    const exitCode = await handleClean(options);
+  .description('Remove generated batches, output directory and CSV files')
+  .action(async () => {
+    const exitCode = await handleClean();
     process.exit(exitCode);
   });
 
@@ -709,15 +624,13 @@ program
 // ERROR HANDLING
 // ============================================================================
 
-// Handle unknown commands
 program.on('command:*', (operands) => {
   logError(`Unknown command: ${operands[0]}`);
   console.log();
-  log(`Run '${colors.highlight('angular-i18n-translator --help')}' for usage information`);
+  log(`Run 'angular-i18n-translator --help' for usage information`);
   process.exit(1);
 });
 
-// Global error handler
 process.on('uncaughtException', (error) => {
   console.error();
   console.error(formatError(error));

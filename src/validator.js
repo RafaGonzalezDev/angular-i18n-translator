@@ -64,6 +64,81 @@ function extractInterpolations(text) {
 }
 
 /**
+ * Extracts inline XLIFF placeholder signatures (<x/>, <g>, ...) from text.
+ * Each tag is represented as `name#id` (id attribute, or positional index
+ * when absent) so multisets can be compared between source and translation.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function extractInlineTags(text) {
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+
+  const signatures = [];
+  const tagRe = /<(x|g|bx|ex|ph|bpt|ept|sub|mrk|it)\b([^>]*?)\/?>/gi;
+
+  let positional = 0;
+  for (const match of text.matchAll(tagRe)) {
+    const name = match[1].toLowerCase();
+    const idMatch = /\bid="([^"]*)"/.exec(match[2]);
+    const id = idMatch ? idMatch[1] : `pos${positional}`;
+    positional++;
+    signatures.push(`${name}#${id}`);
+  }
+
+  return signatures;
+}
+
+/**
+ * Detects ICU message format (plural/select) in text.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function hasIcuFormat(text) {
+  if (!text || typeof text !== 'string') return false;
+  return /\{\s*[\w.]+\s*,\s*(plural|select|selectordinal)\s*,/.test(text);
+}
+
+/**
+ * Checks that curly braces are balanced in text.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function bracesBalanced(text) {
+  let depth = 0;
+  for (const char of text) {
+    if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * Removes values present in `remove` from a copy of `base` (multiset diff).
+ * @param {string[]} base
+ * @param {string[]} remove
+ * @returns {string[]}
+ */
+function multisetDiff(base, remove) {
+  const remaining = [...remove];
+  const result = [];
+
+  for (const item of base) {
+    const index = remaining.indexOf(item);
+    if (index === -1) {
+      result.push(item);
+    } else {
+      remaining.splice(index, 1);
+    }
+  }
+  return result;
+}
+
+/**
  * Compare two interpolation arrays and find differences
  * @param {string[]} sourceVars - Source interpolation variables
  * @param {string[]} targetVars - Target interpolation variables
@@ -226,16 +301,57 @@ export function validateInterpolations(csvFilePath, languages) {
           });
         }
 
-        // Check for identical translation (info)
-        if (targetText && targetText === sourceText && lang !== 'source') {
+        // Check inline XLIFF placeholders (<x/>, <g>, ...)
+        const sourceTags = extractInlineTags(sourceText);
+        const targetTags = extractInlineTags(targetText);
+
+        for (const signature of multisetDiff(sourceTags, targetTags)) {
           issues.push({
             id,
             language: lang,
             line: lineNumber,
-            severity: Severity.INFO,
-            issue: 'Translation identical to source',
-            suggestion: 'Verify if this is intentional or needs translation'
+            severity: Severity.ERROR,
+            issue: `Missing placeholder: <${signature.split('#')[0]} id="${signature.split('#')[1]}">`,
+            suggestion: 'Keep inline placeholders like <x id="..."/> exactly as in the source',
+            context: buildContext(sourceText, targetText)
           });
+        }
+
+        for (const signature of multisetDiff(targetTags, sourceTags)) {
+          issues.push({
+            id,
+            language: lang,
+            line: lineNumber,
+            severity: Severity.WARNING,
+            issue: `Extra placeholder not in source: <${signature.split('#')[0]} id="${signature.split('#')[1]}">`,
+            suggestion: 'Remove the placeholder or verify the source',
+            context: buildContext(sourceText, targetText)
+          });
+        }
+
+        // Check ICU message format structure
+        if (hasIcuFormat(sourceText)) {
+          if (!hasIcuFormat(targetText)) {
+            issues.push({
+              id,
+              language: lang,
+              line: lineNumber,
+              severity: Severity.ERROR,
+              issue: 'Missing ICU message format (plural/select)',
+              suggestion: 'Keep the {var, plural, ...} structure; translate only the text inside the braces',
+              context: buildContext(sourceText, targetText)
+            });
+          } else if (!bracesBalanced(targetText)) {
+            issues.push({
+              id,
+              language: lang,
+              line: lineNumber,
+              severity: Severity.ERROR,
+              issue: 'Unbalanced braces in ICU message',
+              suggestion: 'Check that every { has a matching }',
+              context: buildContext(sourceText, targetText)
+            });
+          }
         }
       }
     }
@@ -322,7 +438,12 @@ export function validateUniqueIds(csvFilePath) {
 }
 
 /**
- * Validate translation coverage per language
+ * Validate translation coverage per language.
+ *
+ * A row counts as translated when the target cell is non-empty AND differs
+ * from the source text. Rows identical to the source are reported separately
+ * (they may be legitimate loanwords, but are usually untranslated rows).
+ *
  * @param {string} csvFilePath - Path to CSV file
  * @param {string[]} languages - Array of language codes
  * @returns {Object} Coverage data per language
@@ -342,16 +463,27 @@ export function validateCoverage(csvFilePath, languages) {
         coverage[lang] = {
           total,
           translated: 0,
+          identical: 0,
           percentage: 0,
           severity: Severity.ERROR
         };
         continue;
       }
 
-      const translated = validRows.filter(row => {
+      let translated = 0;
+      let identical = 0;
+
+      for (const row of validRows) {
         const value = row[lang];
-        return value && value.trim().length > 0;
-      }).length;
+        if (!value || value.trim().length === 0) {
+          continue;
+        }
+        if (value === row.source) {
+          identical++;
+        } else {
+          translated++;
+        }
+      }
 
       const percentage = total > 0 ? Math.round((translated / total) * 100) : 0;
 
@@ -368,6 +500,7 @@ export function validateCoverage(csvFilePath, languages) {
       coverage[lang] = {
         total,
         translated,
+        identical,
         percentage,
         severity,
         missing: total - translated
@@ -382,6 +515,7 @@ export function validateCoverage(csvFilePath, languages) {
       coverage[lang] = {
         total: 0,
         translated: 0,
+        identical: 0,
         percentage: 0,
         severity: Severity.ERROR,
         error: error.message
@@ -558,6 +692,9 @@ export function printReport(report) {
     const bar = '█'.repeat(Math.floor(percentage / 10)) + '░'.repeat(10 - Math.floor(percentage / 10));
     const missingText = stats.missing > 0 ? ` (${stats.missing} missing)` : '';
     log(`  ${lang}: [${bar}] ${percentage}% (${stats.translated}/${stats.total})${missingText}`, colorFn);
+    if (stats.identical > 0) {
+      log(`    ${stats.identical} row(s) identical to source - verify they are really translated`, colors.warning);
+    }
   }
   log('');
 

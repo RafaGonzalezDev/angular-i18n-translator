@@ -68,16 +68,9 @@ const LLM_PROVIDERS = [
   },
 ];
 
-const DEFAULT_SYSTEM_PROMPT = `You are a professional translator specializing in software localization.
-
-Your task is to translate Angular i18n messages from one language to another while:
-1. Preserving all placeholders like {0}, {1}, {count}, etc.
-2. Maintaining ICU message format for plurals and selections
-3. Keeping HTML tags and entities intact
-4. Adapting tone and formality to match the target culture
-5. Translating in context, considering this is UI text
-
-Provide only the translation without explanations or additional text.`;
+// The wizard intentionally does not write a custom systemPrompt: the
+// built-in prompt in llm-client.js is CSV-aware and includes the target
+// language. Users can add llm.systemPrompt later if they need one.
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -109,7 +102,22 @@ function buildLanguageConfig(sourceLanguage, targetLanguages) {
 /**
  * Generate i18n.config.json content
  */
-function generateConfig(languages, sourceLanguage, batchSettings) {
+function generateConfig(languages, sourceLanguage, batchSettings, providerName) {
+  const llm = {
+    baseURL: '${LLM_BASE_URL}',
+    apiKey: '${LLM_API_KEY}',
+    model: '${LLM_MODEL}',
+    batchSize: batchSettings.batchSize,
+    concurrency: batchSettings.concurrency,
+    timeoutMs: 300000
+  };
+
+  // DeepSeek models think by default; translation does not need it and
+  // disabling it makes requests much faster and cheaper.
+  if (providerName === 'DeepSeek') {
+    llm.requestExtra = { thinking: { type: 'disabled' } };
+  }
+
   return {
     languages,
     sourceLanguage,
@@ -117,14 +125,7 @@ function generateConfig(languages, sourceLanguage, batchSettings) {
     csvOutput: 'messages.csv',
     outputDir: 'dist-i18n',
     batchDir: 'batches',
-    llm: {
-      baseURL: '${LLM_BASE_URL}',
-      apiKey: '${LLM_API_KEY}',
-      model: '${LLM_MODEL}',
-      batchSize: batchSettings.batchSize,
-      concurrency: batchSettings.concurrency,
-      systemPrompt: DEFAULT_SYSTEM_PROMPT
-    }
+    llm
   };
 }
 
@@ -461,21 +462,14 @@ async function handleInit() {
   
   // Step 2: LLM Provider
   const provider = await askProvider();
-  
-  // Step 2b: Model name
-  const model = await askModel(provider);
-  
-  // Step 3: Build provider config
-  let providerConfig = { ...provider, model };
-  
-  // Step 3b: Custom config if needed
+
+  // Step 3: Provider-specific details (URL + model for custom providers)
+  let providerConfig;
   if (provider.isCustom) {
-    const customConfig = await askCustomProviderConfig(provider);
-    providerConfig = { 
-      ...providerConfig, 
-      baseURL: customConfig.baseURL,
-      model: customConfig.model || model
-    };
+    providerConfig = await askCustomProviderConfig(provider);
+  } else {
+    const model = await askModel(provider);
+    providerConfig = { ...provider, model };
   }
   
   // Step 4: Source Language
@@ -489,7 +483,7 @@ async function handleInit() {
   
   // Build configuration
   const languages = buildLanguageConfig(sourceLanguage, targetLanguages);
-  const config = generateConfig(languages, sourceLanguage, batchSettings);
+  const config = generateConfig(languages, sourceLanguage, batchSettings, provider.name);
   
   // Replace placeholders for display (actual config uses env vars)
   const displayConfig = {
