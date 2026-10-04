@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 
+# Generated ownership metadata
+.i18n-artifacts.json
+.i18n-artifacts.json.*.tmp
+
 # Generated CSV files
 messages.csv
 messages.translated.csv

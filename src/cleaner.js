@@ -1,60 +1,77 @@
-/**
- * Cleaner Module
- *
- * Removes generated artifacts: batch directories, output directory and the
- * intermediate CSV files. Silent by design: returns what was removed so the
- * caller decides what to report.
- */
+import { lstatSync, readdirSync } from 'node:fs';
+import { rm, rmdir } from 'node:fs/promises';
+import { resolve, relative, dirname, join, isAbsolute } from 'node:path';
+import { assertSafeDirectory, resolveSafeOutputPath, assertNoSymlinks } from './paths.js';
+import { readArtifactManifest, writeArtifactManifest } from './artifacts.js';
 
-import { rm, readdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join } from 'path';
+function exists(target) {
+  try { lstatSync(target); return true; }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+}
 
-/**
- * Cleans batch directories, the output directory, and the CSV files.
- *
- * @param {Object} paths - Paths to clean
- * @param {string} paths.batchDir - Batch directory (e.g. 'batches')
- * @param {string} paths.outputDir - Output directory (e.g. 'dist-i18n')
- * @param {string} paths.csvPath - Main CSV file (e.g. 'messages.csv')
- * @param {string} paths.translatedCsvPath - Translated CSV file
- * @returns {Promise<{removed: string[]}>} Removed file/directory paths
- */
-export async function cleanAll(paths) {
-  const removed = [];
+function within(parent, target) {
+  const rel = relative(parent, target);
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`));
+}
 
+/** Remove only manifest-owned files. Foreign files and unowned empty directories survive. */
+export async function cleanAll(paths, options = {}) {
+  const { dryRun = false, projectRoot = process.cwd() } = options;
+  const safety = { projectRoot, protectedPaths: [...(options.protectedPaths ?? []), paths.sourceFile, paths.configFile].filter(Boolean) };
+  const removed = [], planned = [], warnings = [];
+  // Preflight ALL requested targets before consulting the manifest or deleting anything.
+  const batch = paths.batchDir ? assertSafeDirectory(paths.batchDir, safety) : null;
   const directories = [
-    join(paths.batchDir, 'pending'),
-    join(paths.batchDir, 'translated'),
-    paths.outputDir,
+    ...(batch ? [assertSafeDirectory(join(batch, 'pending'), safety), assertSafeDirectory(join(batch, 'translated'), safety)] : []),
+    ...(paths.outputDir ? [assertSafeDirectory(paths.outputDir, safety)] : []),
   ];
-
-  for (const dir of directories) {
-    if (!existsSync(dir)) continue;
-
-    const entries = await readdir(dir);
-    if (entries.length === 0) continue;
-
-    await rm(dir, { recursive: true, force: true });
-    removed.push(dir);
+  const exact = [paths.csvPath, paths.translatedCsvPath].filter(Boolean).map(file => resolveSafeOutputPath(file, safety));
+  const manifest = readArtifactManifest(safety);
+  if (!manifest) {
+    warnings.push('No artifact manifest found; existing artifacts were preserved. Review old artifacts and clean them manually.');
+    return { removed, planned, warnings };
   }
+  const owned = manifest.files.map(file => resolveSafeOutputPath(file, safety));
+  const selected = owned.filter(file => exact.includes(file) || directories.some(dir => within(dir, file)));
+  const files = selected.filter(exists);
+  for (const file of selected) {
+    if (!files.includes(file)) warnings.push(`Registered artifact is missing; no deletion needed: ${file}`);
+  }
+  const candidates = new Set();
+  for (const file of files) {
+    let parent = dirname(file);
+    while (directories.some(dir => within(dir, parent)) || (batch && parent === batch)) {
+      candidates.add(assertSafeDirectory(parent, safety));
+      parent = dirname(parent);
+    }
+    if (batch && directories.some(dir => within(dir, file)) && within(batch, file)) candidates.add(batch);
+  }
+  const virtualRemoved = new Set(files);
+  const emptyDirectories = [...candidates].sort((a, b) => b.length - a.length).filter(dir => {
+    const empty = readdirSync(dir).every(entry => virtualRemoved.has(join(dir, entry)));
+    if (empty) virtualRemoved.add(dir);
+    return empty;
+  });
+  planned.push(...files, ...emptyDirectories);
+  if (dryRun) return { removed, planned, warnings };
 
-  // Remove the batch parent directory too if it is now empty
-  if (existsSync(paths.batchDir)) {
-    const remaining = await readdir(paths.batchDir);
-    if (remaining.length === 0) {
-      await rm(paths.batchDir, { recursive: true, force: true });
+  for (const file of files) {
+    // Revalidate the exact resolved target immediately before the non-recursive removal.
+    if (resolveSafeOutputPath(file, safety) !== file || assertNoSymlinks(file) !== file) throw new Error('Cleanup target changed');
+    await rm(file, { force: true });
+    removed.push(file);
+  }
+  for (const dir of emptyDirectories) {
+    if (assertSafeDirectory(dir, safety) !== dir) throw new Error('Cleanup directory target changed');
+    // rmdir never recursively removes contents; races introducing a foreign file are safe.
+    try { await rmdir(dir); removed.push(dir); }
+    catch (error) {
+      if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes(error.code)) throw error;
+      if (error.code !== 'ENOENT') warnings.push(`Directory preserved because it is no longer empty: ${dir}`);
     }
   }
-
-  for (const file of [paths.csvPath, paths.translatedCsvPath]) {
-    if (file && existsSync(file)) {
-      await rm(file, { force: true });
-      removed.push(file);
-    }
-  }
-
-  return { removed };
+  writeArtifactManifest(owned.filter(file => !selected.includes(file)), safety);
+  return { removed, planned, warnings };
 }
 
 export default { cleanAll };

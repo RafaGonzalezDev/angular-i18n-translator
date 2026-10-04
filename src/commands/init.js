@@ -4,7 +4,8 @@
  * Creates i18n.config.json and .env files through an interactive CLI wizard.
  */
 
-import { existsSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, writeFileSync, readFileSync, lstatSync } from 'fs';
+import { assertNoSymlinks } from '../paths.js';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createPromptModule } from 'inquirer';
@@ -432,6 +433,10 @@ async function handleInit() {
   const cwd = process.cwd();
   const envPath = resolve(cwd, '.env');
   const configPath = resolve(cwd, 'i18n.config.json');
+  for (const path of [envPath, configPath, resolve(cwd, '.gitignore')]) {
+    assertNoSymlinks(path);
+    if (existsSync(path) && !lstatSync(path).isFile()) throw new Error('Configuration destination must be a regular file');
+  }
   
   // Check for existing config
   if (existsSync(configPath)) {
@@ -503,7 +508,7 @@ async function handleInit() {
   try {
     // Update/create .env file
     const envContent = updateEnvFile(envPath, apiKey, providerConfig.baseURL, providerConfig.model);
-    writeFileSync(envPath, envContent, 'utf-8');
+    writeFileSync(envPath, envContent, { encoding: 'utf-8', mode: 0o600 });
     
     // Create i18n.config.json
     const configJson = JSON.stringify(config, null, 2);
@@ -513,13 +518,12 @@ async function handleInit() {
     
     // Add .env to .gitignore if not present
     const gitignorePath = resolve(cwd, '.gitignore');
-    if (existsSync(gitignorePath)) {
-      const gitignore = readFileSync(gitignorePath, 'utf-8');
-      if (!gitignore.includes('.env')) {
-        const updatedGitignore = gitignore.trimEnd() + '\n\n# Environment variables\n.env\n';
-        writeFileSync(gitignorePath, updatedGitignore, 'utf-8');
-        console.log(colors.success('✓ Added .env to .gitignore'));
-      }
+    const gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+    const lines = new Set(gitignore.split(/\r?\n/).map(line => line.trim()));
+    const missingRules = ['.env', '.i18n-artifacts.json'].filter(rule => !lines.has(rule));
+    if (missingRules.length) {
+      writeFileSync(gitignorePath, `${gitignore.trimEnd()}\n\n# Private configuration and generated ownership metadata\n${missingRules.join('\n')}\n`, 'utf-8');
+      console.log('Updated .gitignore for private configuration and generated metadata');
     }
     
     // Show success message and next steps
