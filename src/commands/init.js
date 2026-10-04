@@ -25,7 +25,7 @@ const LLM_PROVIDERS = [
     value: { 
       name: 'DeepSeek',
       baseURL: 'https://api.deepseek.com', 
-      model: '',
+      model: 'deepseek-flash',
       docsURL: 'https://api-docs.deepseek.com/'
     } 
   },
@@ -36,15 +36,6 @@ const LLM_PROVIDERS = [
       baseURL: 'https://api.openai.com/v1', 
       model: '',
       docsURL: 'https://platform.openai.com/docs/models'
-    } 
-  },
-  { 
-    name: 'Anthropic', 
-    value: { 
-      name: 'Anthropic',
-      baseURL: 'https://api.anthropic.com/v1', 
-      model: '',
-      docsURL: 'https://docs.anthropic.com/en/docs/about-claude/models'
     } 
   },
   { 
@@ -218,6 +209,7 @@ async function askModel(provider) {
   
   const model = await input({
     message: `Enter model name for ${provider.name} (see: ${provider.docsURL}):`,
+    default: provider.model || undefined,
     validate: (value) => {
       if (!value || value.trim().length === 0) {
         return 'Model name is required. Please check the documentation link above for available models.';
