@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-10-04
+
+### Breaking changes
+- Require Node.js `^24.15.0 || >=26.0.0`; older runtimes and Node 25 are unsupported.
+- Require `__content_format=xliff-fragment-v1` on every persisted CSV row. Source/target cells are canonical XML fragments: literal text is entity-escaped, real inline XLIFF placeholders remain markup, and CDATA becomes escaped text. Unmarked, unknown or mixed formats are rejected without inference. Preserve 1.x originals, regenerate from the original XLF and manually reapply reviewed translations; adding a marker to old ambiguous content is not migration.
+- Reject missing target columns/cells for non-empty source messages; merge tracks every configured target language and leaves missing targets empty instead of falling back to source. Identical targets are review warnings, accepted by default but rejected by strict validation.
+- Cleanup no longer recursively removes configured directories or unregistered legacy artifacts. Only selected manifest-owned files may be deleted; foreign contents and untouched empty directories survive.
+
+### Added
+- Shared canonical XML/message validation for conversion, LLM response acceptance, cache verification and CSV validation; structural checks cover placeholder multiplicity/attributes/nesting, interpolation multiplicity and nested ICU variables/types/selectors.
+- Pinned `@angular/compiler` `22.1.4` for ICU parsing behind the message-content boundary, with an experimental API dependency and approximately 5 MB installed runtime footprint. See [ADR-0001](<adr/ADR-0001-canonical-xliff-fragments.md>) and [ADR-0002](<adr/ADR-0002-use-angular-icu-parser.md>).
+- `validate --file <path>` to inspect another canonical CSV and `validate --strict` to fail on warnings; default validation uses the derived translated CSV.
+- `clean --dry-run`, versioned project-root `.i18n-artifacts.json`, synchronous ownership registration and atomic manifest updates. Path-only metadata excludes API keys; preflight checks all paths before deletion and rejects root/ancestors, escapes/traversal, protected paths and symlinks/junctions.
+- Versioned batch cache identity, current-input/request fingerprint, output digest and structural verification before reuse; changes to source/context/target cells, language or effective request settings invalidate caches.
+
+### Fixed
+- Strict CSV parsing detects duplicate/empty headers and preserves physical record locations, including multiline fields; IDs must be non-empty/unique and LLM responses must contain exactly the original ID set and unchanged source/context.
+- Malformed XML, invalid characters/entities, unsupported inline elements and DOCTYPE/custom entities fail closed; literal placeholder-looking text no longer becomes markup.
+- Partial pipeline recovery exports complete valid languages while reporting failure with exit 1. Skipped languages' existing XLF files are explicitly flagged as old outputs; merge never hides entirely absent languages.
+- Forced or stale-cache retranslation invalidates metadata before requesting replacement; a failed retry cannot resurrect an old result in merge.
+- Request timeout spans response body consumption; bounded retries distinguish retryable HTTP/network/validation failures, honor `Retry-After` and protect configured `model`/generated `messages` from provider extras.
+
+### Documentation and verification
+- Updated migration, validation, safe-cleanup, recovery and cache guidance in the [README](<../README.md>); retained previous release history below.
+- The DeepSeek recipe remains `deepseek-v4-flash` with thinking disabled. This release's audit/tests use local mocks, not live APIs or fresh provider benchmarks; no keys or token spending are required for the test suite.
+
+---
+
 ## [1.3.1] - 2026-08-16
 
 ### Changed
