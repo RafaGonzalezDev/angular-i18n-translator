@@ -5,6 +5,19 @@
  */
 
 import { z } from 'zod';
+import { posix } from 'node:path';
+import { getTranslatedCsvPath } from './paths.js';
+
+const LANGUAGE_CODE_RE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
+const normalizePath = value => posix.normalize(value.replace(/\\/g, '/')).toLowerCase();
+const inside = (dir, file) => file === dir || file.startsWith(`${dir}/`);
+const safeDirectory = value => {
+  const normalized = normalizePath(value);
+  return value.trim().length > 0 && !/[\x00-\x1f]/.test(value)
+    && !value.split(/[\\/]/).includes('..')
+    && !['.', '/', ''].includes(normalized) && !/^[a-z]:\/?$/i.test(normalized)
+    && !normalized.split('/').some(part => ['.git', 'node_modules', 'src', 'test', 'tests', 'docs', 'source', 'config'].includes(part));
+};
 
 // ============================================================================
 // LANGUAGE SCHEMA
@@ -17,7 +30,9 @@ export const LanguageSchema = z.object({
   /** ISO language code (e.g., 'en', 'es', 'fr') */
   code: z.string()
     .min(2, 'Language code must be at least 2 characters')
-    .max(10, 'Language code must be at most 10 characters'),
+    .max(63, 'Language code must be at most 63 characters')
+    .regex(LANGUAGE_CODE_RE, 'Language code must be a BCP47-like code without path separators')
+    .refine(code => !['id', 'source', 'note', 'meaning'].includes(code.toLowerCase()), 'Language code conflicts with a reserved CSV column'),
 
   /** Human-readable language name (e.g., 'English', 'Spanish') */
   name: z.string()
@@ -25,7 +40,9 @@ export const LanguageSchema = z.object({
 
   /** Output file name for this language (e.g., 'messages.es.xlf') */
   file: z.string()
-    .min(1, 'Language file name is required'),
+    .min(1, 'Language file name is required')
+    .regex(/^[^\\/:\x00-\x1f]+\.xlf$/i, 'Language file must be a basename with an .xlf extension')
+    .refine(file => !file.includes('..') && !/[. ]$/.test(file), 'Language file must not contain traversal'),
 });
 
 // ============================================================================
@@ -64,6 +81,7 @@ export const LLMConfigSchema = z.object({
   timeoutMs: z.number()
     .int('timeoutMs must be an integer')
     .positive('timeoutMs must be positive')
+    .max(2147483647, 'timeoutMs exceeds the Node timer limit')
     .optional(),
 
   /**
@@ -91,7 +109,8 @@ export const I18nConfigSchema = z.object({
 
   /** ISO code of the source language for translations */
   sourceLanguage: z.string()
-    .min(1, 'Source language code is required'),
+    .min(1, 'Source language code is required')
+    .regex(LANGUAGE_CODE_RE, 'Source language must be a BCP47-like code'),
 
   /** Path to the source XLF file extracted by Angular */
   sourceFile: z.string()
@@ -103,16 +122,36 @@ export const I18nConfigSchema = z.object({
 
   /** Directory for generated translation files */
   outputDir: z.string()
+    .refine(safeDirectory, 'outputDir must be a non-root, non-protected directory without traversal')
     .default('dist-i18n'),
 
   /** Directory for storing batch files during translation */
   batchDir: z.string()
+    .refine(safeDirectory, 'batchDir must be a non-root, non-protected directory without traversal')
     .default('batches'),
 
   /** LLM provider configuration */
   llm: LLMConfigSchema,
 })
 .superRefine((config, ctx) => {
+  const issue = (field, message) => ctx.addIssue({ code: 'custom', path: [field], message });
+  const source = normalizePath(config.sourceFile);
+  const csv = normalizePath(config.csvOutput);
+  const translated = config.csvOutput ? normalizePath(getTranslatedCsvPath(config.csvOutput)) : '';
+  const output = normalizePath(config.outputDir);
+  const batch = normalizePath(config.batchDir);
+  if (source === csv || source === translated) issue('csvOutput', 'CSV output must not overwrite the source file');
+  if (inside(output, batch) || inside(batch, output)) issue('batchDir', 'Batch and output directories must not overlap');
+  for (const [field, dir] of [['outputDir', output], ['batchDir', batch]]) {
+    if ([source, csv, translated].some(file => inside(dir, file) || inside(file, dir))) {
+      issue(field, 'Generated directories must not overlap source or CSV paths');
+    }
+  }
+  for (const [field, value] of [['sourceFile', config.sourceFile], ['csvOutput', config.csvOutput]]) {
+    if (!value.trim() || /[\x00-\x1f]/.test(value) || value.split(/[\\/]/).includes('..')) {
+      issue(field, 'File path must not be empty or contain traversal');
+    }
+  }
   // Language codes must be unique
   const seenCodes = new Set();
   config.languages.forEach((lang, index) => {
@@ -129,14 +168,14 @@ export const I18nConfigSchema = z.object({
   // Output file names must be unique
   const seenFiles = new Set();
   config.languages.forEach((lang, index) => {
-    if (seenFiles.has(lang.file)) {
+    if (seenFiles.has(lang.file.toLowerCase())) {
       ctx.addIssue({
         code: "custom",
         path: ['languages', index, 'file'],
         message: `Duplicate language file name "${lang.file}"`,
       });
     }
-    seenFiles.add(lang.file);
+    seenFiles.add(lang.file.toLowerCase());
   });
 });
 

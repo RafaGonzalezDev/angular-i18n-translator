@@ -2,9 +2,20 @@
  * Shared test helpers and fixtures.
  */
 
-import { mkdtempSync, writeFileSync, mkdirSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from 'fs';
+import { after } from 'node:test';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve, dirname, basename } from 'path';
+
+const temporaryFixtures = new Map();
+after(() => {
+  for (const [directory, prefix] of temporaryFixtures) {
+    if (dirname(directory) !== resolve(tmpdir()) || !basename(directory).startsWith(prefix) || realpathSync.native(directory).toLowerCase() !== directory.toLowerCase()) {
+      throw new Error(`Refusing unsafe fixture cleanup: ${directory}`);
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 /**
  * XLF fixture covering the tricky cases: inline placeholders, attribute
@@ -31,7 +42,7 @@ export const FIXTURE_XLF = `<?xml version="1.0" encoding="UTF-8"?>
         <source>{count, plural, =0 {No items} =1 {One item} other {# items}}</source>
         <note>First note</note>
         <note>Second note</note>
-        <meaning>items count</meaning>
+        <note from="meaning">items count</note>
       </trans-unit>
       <trans-unit id="html.inline">
         <source>Click <g id="0" ctype="link">here</g> to continue</source>
@@ -74,7 +85,9 @@ export const FIXTURE_XLF_BROKEN = `<?xml version="1.0" encoding="UTF-8"?>
  * @returns {string} Absolute path of the temp directory
  */
 export function makeTempDir(prefix = 'i18n-test-') {
-  return mkdtempSync(join(tmpdir(), prefix));
+  const directory = resolve(mkdtempSync(join(tmpdir(), prefix)));
+  temporaryFixtures.set(directory, prefix);
+  return directory;
 }
 
 /**

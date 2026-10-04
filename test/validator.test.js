@@ -10,9 +10,9 @@ import { validateInterpolations, validateUniqueIds, validateCoverage, validate }
 import { makeTempDir, writeFixture } from './helpers.js';
 
 function makeCsv(dir, rows) {
-  const header = '"id","source","note","meaning","es"';
+  const header = '"id","source","note","meaning","__content_format","es"';
   const lines = [header, ...rows.map(r =>
-    `"${r.id}","${(r.source || '').replace(/"/g, '""')}","","","${(r.es || '').replace(/"/g, '""')}"`
+    `"${r.id}","${(r.source || '').replace(/"/g, '""')}","","","xliff-fragment-v1","${(r.es || '').replace(/"/g, '""')}"`
   )];
   return writeFixture(dir, 'messages.csv', lines.join('\n') + '\n');
 }
@@ -31,7 +31,7 @@ test('detects missing and extra interpolations', () => {
   const errors = issues.filter(i => i.severity === 'error');
   assert.ok(errors.some(i => i.issue.includes('{{count}}')));
   assert.ok(errors.some(i => i.issue.includes('{{place}}')));
-  assert.ok(issues.some(i => i.severity === 'warning' && i.issue.includes('{{invented}}')));
+  assert.ok(issues.some(i => i.severity === 'error' && i.issue.includes('{{invented}}')));
   assert.ok(!issues.some(i => i.id === 'ok'));
 });
 
@@ -80,7 +80,7 @@ test('detects duplicate ids', () => {
   assert.equal(duplicates[0].count, 2);
 });
 
-test('coverage treats rows identical to source as untranslated', () => {
+test('coverage separates identical from missing targets', () => {
   const dir = makeTempDir();
   const csv = makeCsv(dir, [
     { id: 'a', source: 'Hello', es: 'Hola' },
@@ -93,8 +93,8 @@ test('coverage treats rows identical to source as untranslated', () => {
   assert.equal(coverage.es.total, 3);
   assert.equal(coverage.es.translated, 1);
   assert.equal(coverage.es.identical, 1);
-  assert.equal(coverage.es.missing, 2);
-  assert.equal(coverage.es.percentage, 33);
+  assert.equal(coverage.es.missing, 1);
+  assert.equal(coverage.es.percentage, 67);
   assert.equal(coverage.es.severity, 'error');
 });
 
